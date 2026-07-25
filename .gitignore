@@ -1,0 +1,7 @@
+node_modules
+.next
+tsconfig.tsbuildinfo
+# estado local: banco do board e os workspaces onde os agentes rodam
+# (workspaces/demo é um repo git próprio, sandbox do agente)
+data/board.db*
+workspaces/
