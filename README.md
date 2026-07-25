@@ -33,6 +33,23 @@ npm install
 npm run dev   # http://localhost:3000 (usa outra porta se a 3000 estiver ocupada)
 ```
 
+## Projetos
+
+Um projeto = **nome + ferramenta + workspace**. É ele que decide qual CLI roda e
+em qual diretório. Dá pra gerenciar pelo botão **Projetos** no header (criar,
+renomear, trocar de ferramenta, mudar o workspace, excluir):
+
+- O workspace pode ser digitado ou escolhido no botão **📁**, que navega os
+  diretórios de verdade (o browser não expõe caminho de pasta nem com
+  `webkitdirectory`, então quem lista o disco é o backend — `GET /api/fs`,
+  limitado a `$HOME` e à raiz do app). O seletor também cria subpasta na hora.
+- O diretório é criado se não existir (relativo à raiz do app ou absoluto);
+  apontar pra um arquivo é recusado.
+- Excluir um projeto exige que ele esteja **sem cards** (409) — card sem projeto
+  não teria tool nem workspace pra rodar.
+- Sem nenhum projeto cadastrado, não dá pra criar card. O seed (projeto demo)
+  roda uma vez só por arquivo de banco, então esvaziar o board não o traz de volta.
+
 ## Tipos de coluna
 
 Cada coluna tem um `type` que decide **os dois** comportamentos de uma vez:
@@ -75,16 +92,22 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 ## Estrutura
 
 - `lib/config.ts` — tipos do domínio + tools, colunas e seed de projetos/cards
-- `lib/schema.ts` — tabelas Drizzle (projects, cards, runs)
-- `lib/db.ts` — conexão SQLite, criação de schema e seed inicial
+- `lib/schema.ts` — tabelas Drizzle (projects, cards, runs, messages, meta)
+- `lib/db.ts` — conexão SQLite, criação de schema, migrações e seed inicial
+- `lib/projects.ts` — validação do CRUD de projetos (nome, tool, workspace)
 - `lib/store.ts` — queries/mutations tipadas + `getBoard()`; emite mudança no bus
 - `lib/bus.ts` — event bus in-process que alimenta o SSE
 - `lib/runner.ts` — monta o prompt e faz `spawn` da CLI no workspace
 - `lib/engine.ts` — mover card, disparar/cancelar agente, encadear colunas e
   rotear pelo veredito (`routeAfterRun`)
-- `app/api/*` — endpoints REST (`POST /api/cards`, `DELETE /api/cards/:id`,
-  `:id/move`, `:id/run`, `:id/message`) + `events` (SSE)
+- `app/api/*` — endpoints REST + `events` (SSE):
+  - cards: `POST /api/cards`, `DELETE /api/cards/:id`, `:id/move`, `:id/run`, `:id/message`
+  - projetos: `GET|POST /api/projects`, `PATCH|DELETE /api/projects/:id`
+  - pastas: `GET /api/fs?path=…` (listar), `POST /api/fs` (criar subpasta)
 - `app/page.tsx` — board (drag-and-drop, atualiza via `EventSource`)
+- `app/ProjectsPanel.tsx` — modal de CRUD de projetos (botão "Projetos" no header)
+- `app/DirPicker.tsx` — seletor de pasta do workspace
+- `lib/fsbrowse.ts` — listagem/criação de diretórios com limite em `$HOME` + raiz do app
 
 ## Colunas de chat
 
