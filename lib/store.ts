@@ -2,6 +2,7 @@ import { eq, asc } from "drizzle-orm";
 import { db } from "./db";
 import { cards, projects, runs, messages } from "./schema";
 import { emitChange } from "./bus";
+import { gerarSlugUnico } from "./slug";
 import {
   TOOLS,
   COLUMNS,
@@ -21,30 +22,30 @@ export function getBoard(): Board {
   const runRows = db.select().from(runs).orderBy(asc(runs.id)).all();
   const msgRows = db.select().from(messages).orderBy(asc(messages.id)).all();
 
-  const cardsOut: Card[] = cardRows.map((c) => ({
-    id: c.id,
-    title: c.title,
-    description: c.description,
-    projectId: c.projectId,
-    columnId: c.columnId,
-    status: c.status as CardStatus,
-    reviewCycles: c.reviewCycles,
-    createdAt: c.createdAt,
+  const cardsOut: Card[] = cardRows.map((card) => ({
+    id: card.id,
+    title: card.title,
+    description: card.description,
+    projectId: card.projectId,
+    columnId: card.columnId,
+    status: card.status as CardStatus,
+    reviewCycles: card.reviewCycles,
+    createdAt: card.createdAt,
     history: runRows
-      .filter((r) => r.cardId === c.id)
-      .map<RunEntry>((r) => ({
-        column: r.column,
-        tool: r.tool ?? undefined,
-        ok: r.ok ?? undefined,
-        output: r.output,
-        at: r.at,
+      .filter((run) => run.cardId === card.id)
+      .map<RunEntry>((run) => ({
+        column: run.column,
+        tool: run.tool ?? undefined,
+        ok: run.ok ?? undefined,
+        output: run.output,
+        at: run.at,
       })),
     messages: msgRows
-      .filter((m) => m.cardId === c.id)
-      .map<ChatMessage>((m) => ({
-        role: m.role as ChatMessage["role"],
-        content: m.content,
-        at: m.at,
+      .filter((mensagem) => mensagem.cardId === card.id)
+      .map<ChatMessage>((mensagem) => ({
+        role: mensagem.role as ChatMessage["role"],
+        content: mensagem.content,
+        at: mensagem.at,
       })),
   }));
 
@@ -52,7 +53,7 @@ export function getBoard(): Board {
 }
 
 export function getColumn(id: string): Column | undefined {
-  return COLUMNS.find((c) => c.id === id);
+  return COLUMNS.find((coluna) => coluna.id === id);
 }
 
 export function getCardRow(id: string) {
@@ -61,6 +62,37 @@ export function getCardRow(id: string) {
 
 export function getProject(id: string): Project | undefined {
   return db.select().from(projects).where(eq(projects.id, id)).get() as Project | undefined;
+}
+
+export function getProjects(): Project[] {
+  return db.select().from(projects).all() as Project[];
+}
+
+export function countCardsInProject(projectId: string): number {
+  return db.select().from(cards).where(eq(cards.projectId, projectId)).all().length;
+}
+
+export function createProject(input: Omit<Project, "id">): Project {
+  const idsOcupados = new Set(getProjects().map((projeto) => projeto.id));
+  const row: Project = { id: gerarSlugUnico(input.name, "projeto", idsOcupados), ...input };
+  db.insert(projects).values(row).run();
+  emitChange();
+  return row;
+}
+
+export function updateProject(id: string, patch: Partial<Omit<Project, "id">>): Project | undefined {
+  const existing = getProject(id);
+  if (!existing) return undefined;
+  db.update(projects).set(patch).where(eq(projects.id, id)).run();
+  emitChange();
+  return { ...existing, ...patch };
+}
+
+export function deleteProject(id: string): boolean {
+  if (!getProject(id)) return false;
+  db.delete(projects).where(eq(projects.id, id)).run();
+  emitChange();
+  return true;
 }
 
 export function setCardStatus(id: string, status: CardStatus) {
@@ -99,7 +131,11 @@ export function getMessages(cardId: string): ChatMessage[] {
     .where(eq(messages.cardId, cardId))
     .orderBy(asc(messages.id))
     .all()
-    .map((m) => ({ role: m.role as ChatMessage["role"], content: m.content, at: m.at }));
+    .map((mensagem) => ({
+      role: mensagem.role as ChatMessage["role"],
+      content: mensagem.content,
+      at: mensagem.at,
+    }));
 }
 
 export function addMessage(cardId: string, role: ChatMessage["role"], content: string) {
@@ -107,10 +143,10 @@ export function addMessage(cardId: string, role: ChatMessage["role"], content: s
   emitChange();
 }
 
-// Remove a card and everything attached to it (runs + chat thread).
+// Runs e mensagens não têm FK com cascade; a limpeza é explícita.
 export function deleteCard(id: string): boolean {
-  const existing = db.select().from(cards).where(eq(cards.id, id)).get();
-  if (!existing) return false;
+  const existe = db.select().from(cards).where(eq(cards.id, id)).get();
+  if (!existe) return false;
   db.delete(runs).where(eq(runs.cardId, id)).run();
   db.delete(messages).where(eq(messages.cardId, id)).run();
   db.delete(cards).where(eq(cards.id, id)).run();
@@ -119,13 +155,21 @@ export function deleteCard(id: string): boolean {
 }
 
 export function createCard(input: { title: string; description?: string; projectId?: string }): Card {
-  const firstProject = db.select().from(projects).limit(1).get() as Project | undefined;
+  // Card sem projeto real nunca roda: é o projeto que define tool e workspace.
+  const projeto = input.projectId
+    ? getProject(input.projectId)
+    : (db.select().from(projects).limit(1).get() as Project | undefined);
+  if (!projeto) {
+    throw new Error(
+      input.projectId ? `projeto não encontrado: ${input.projectId}` : "nenhum projeto cadastrado"
+    );
+  }
   const id = `card-${Math.floor(performance.now())}-${Math.floor(performance.now() % 1000)}`;
   const row = {
     id,
     title: input.title,
     description: input.description ?? "",
-    projectId: input.projectId ?? firstProject?.id ?? "demo",
+    projectId: projeto.id,
     columnId: "ideas",
     status: "idle" as CardStatus,
     reviewCycles: 0,

@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
 import type { Column, Project, Tool, RunEntry, ChatMessage } from "./config";
+import { logErro } from "./log";
 
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 min safety cap per run
 
@@ -43,7 +44,7 @@ export function buildChatPrompt(
     parts.push(`\n## Task\n${column.instruction}\n\nOpen the conversation now: give a brief read of the idea and your first questions.`);
   } else {
     const transcript = card.messages
-      .map((m) => `${m.role === "user" ? "User" : "You"}: ${m.content}`)
+      .map((mensagem) => `${mensagem.role === "user" ? "User" : "You"}: ${mensagem.content}`)
       .join("\n\n");
     parts.push(`\n## Conversation so far\n${transcript}`);
     parts.push(
@@ -53,24 +54,37 @@ export function buildChatPrompt(
   return parts.join("\n");
 }
 
-function resolveWorkspace(project: Project): string {
-  const abs = path.isAbsolute(project.workspace)
-    ? project.workspace
-    : path.join(process.cwd(), project.workspace);
-  if (!fs.existsSync(abs)) fs.mkdirSync(abs, { recursive: true });
-  return abs;
+// Recusa arquivo: sem isso o erro só apareceria depois, como falha de spawn.
+export function ensureWorkspaceDir(workspace: string): string {
+  const caminhoAbsoluto = path.isAbsolute(workspace)
+    ? workspace
+    : path.join(process.cwd(), workspace);
+
+  if (fs.existsSync(caminhoAbsoluto)) {
+    if (!fs.statSync(caminhoAbsoluto).isDirectory()) {
+      throw new Error(`workspace não é um diretório: ${caminhoAbsoluto}`);
+    }
+  } else {
+    fs.mkdirSync(caminhoAbsoluto, { recursive: true });
+  }
+  return caminhoAbsoluto;
 }
 
-// Kill a child and its whole process tree (the CLI may spawn subprocesses).
+function resolveWorkspace(project: Project): string {
+  return ensureWorkspaceDir(project.workspace);
+}
+
+// A CLI dá spawn em subprocessos, então mata o grupo (pid negativo) inteiro.
 export function killTree(child: ChildProcess | undefined) {
   if (!child || child.pid == null) return;
   try {
-    process.kill(-child.pid, "SIGKILL"); // negative pid => the process group
-  } catch {
+    process.kill(-child.pid, "SIGKILL");
+  } catch (erroGrupo) {
+    logErro(`kill do grupo ${child.pid}`, erroGrupo);
     try {
       child.kill("SIGKILL");
-    } catch {
-      /* already gone */
+    } catch (erroProcesso) {
+      logErro(`kill do processo ${child.pid} (provavelmente já morreu)`, erroProcesso);
     }
   }
 }
@@ -90,12 +104,12 @@ export function runTool(opts: {
 }): Promise<RunResult> {
   return new Promise((resolve) => {
     const cwd = resolveWorkspace(opts.project);
-    const args = opts.tool.args.map((a) => a.replace("{{prompt}}", opts.prompt));
+    const args = opts.tool.args.map((argumento) => argumento.replace("{{prompt}}", opts.prompt));
 
     const child = spawn(opts.tool.command, args, {
       cwd,
       env: process.env,
-      detached: true, // own process group, so killTree can take down the whole tree
+      detached: true, // grupo próprio, pra killTree derrubar a árvore inteira
     });
     opts.onSpawn?.(child);
 
@@ -103,18 +117,20 @@ export function runTool(opts: {
     let stderr = "";
     const timer = setTimeout(() => killTree(child), TIMEOUT_MS);
 
-    child.stdout?.on("data", (d) => (stdout += d.toString()));
-    child.stderr?.on("data", (d) => (stderr += d.toString()));
+    child.stdout?.on("data", (pedaco) => (stdout += pedaco.toString()));
+    child.stderr?.on("data", (pedaco) => (stderr += pedaco.toString()));
 
-    child.on("error", (err) => {
+    child.on("error", (erro) => {
       clearTimeout(timer);
-      resolve({ ok: false, output: `Failed to spawn "${opts.tool.command}": ${err.message}` });
+      logErro(`spawn de "${opts.tool.command}"`, erro);
+      resolve({ ok: false, output: `Failed to spawn "${opts.tool.command}": ${erro.message}` });
     });
 
-    child.on("close", (code) => {
+    child.on("close", (codigoSaida) => {
       clearTimeout(timer);
-      const out = (stdout || stderr || "").trim();
-      resolve({ ok: code === 0, output: out || `(no output, exit code ${code})` });
+      const saida = (stdout || stderr || "").trim();
+      if (codigoSaida !== 0) logErro(`${opts.tool.command} saiu com código ${codigoSaida}`, saida);
+      resolve({ ok: codigoSaida === 0, output: saida || `(no output, exit code ${codigoSaida})` });
     });
   });
 }

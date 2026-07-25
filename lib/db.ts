@@ -50,40 +50,56 @@ function init() {
       content TEXT NOT NULL,
       at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
-  // Tiny migrations for databases created by an older schema.
-  const cardCols = (sqlite.prepare("PRAGMA table_info(cards)").all() as { name: string }[]).map(
-    (c) => c.name
-  );
-  if (!cardCols.includes("review_cycles")) {
+  // Migrações de bancos criados por um schema anterior.
+  const colunasDeCards = (
+    sqlite.prepare("PRAGMA table_info(cards)").all() as { name: string }[]
+  ).map((coluna) => coluna.name);
+  if (!colunasDeCards.includes("review_cycles")) {
     sqlite.exec("ALTER TABLE cards ADD COLUMN review_cycles INTEGER NOT NULL DEFAULT 0");
   }
 
   const db = drizzle(sqlite, { schema });
 
-  // Seed once, if empty.
-  const count = sqlite.prepare("SELECT COUNT(*) AS n FROM projects").get() as { n: number };
-  if (count.n === 0) {
-    const insProject = sqlite.prepare(
+  // Seed uma vez por arquivo de banco. Sem a flag, esvaziar o board pela UI
+  // faria o projeto demo (e o card dele) reaparecerem no boot seguinte.
+  const jaSemeado = sqlite.prepare("SELECT value FROM meta WHERE key = 'seeded'").get();
+  const totalDeProjetos = sqlite.prepare("SELECT COUNT(*) AS n FROM projects").get() as {
+    n: number;
+  };
+
+  if (!jaSemeado && totalDeProjetos.n === 0) {
+    const inserirProjeto = sqlite.prepare(
       "INSERT INTO projects (id, name, tool, workspace) VALUES (?, ?, ?, ?)"
     );
-    for (const p of SEED_PROJECTS) insProject.run(p.id, p.name, p.tool, p.workspace);
+    for (const projeto of SEED_PROJECTS) {
+      inserirProjeto.run(projeto.id, projeto.name, projeto.tool, projeto.workspace);
+    }
 
-    const insCard = sqlite.prepare(
+    const inserirCard = sqlite.prepare(
       "INSERT INTO cards (id, title, description, project_id, column_id, status, review_cycles, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     );
-    for (const c of SEED_CARDS)
-      insCard.run(
-        c.id,
-        c.title,
-        c.description,
-        c.projectId,
-        c.columnId,
-        c.status,
-        c.reviewCycles,
-        c.createdAt
+    for (const card of SEED_CARDS) {
+      inserirCard.run(
+        card.id,
+        card.title,
+        card.description,
+        card.projectId,
+        card.columnId,
+        card.status,
+        card.reviewCycles,
+        card.createdAt
       );
+    }
+  }
+
+  if (!jaSemeado) {
+    sqlite.prepare("INSERT INTO meta (key, value) VALUES ('seeded', '1')").run();
   }
 
   return db;
