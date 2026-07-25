@@ -14,7 +14,9 @@ import {
   deleteCard as storeDeleteCard,
 } from "./store";
 import { buildPrompt, buildChatPrompt, runTool, killTree } from "./runner";
-import { MAX_REVIEW_CYCLES, parseVerdict, type Card, type Column } from "./config";
+import { MAX_REVIEW_CYCLES, type Card, type Column } from "./config";
+import { parseVerdict } from "./verdict";
+import { logErro } from "./log";
 
 // In-process state (single-process dev prototype).
 const running = new Set<string>();
@@ -28,8 +30,10 @@ function nowStamp() {
 
 // Register a running job so cancelCard() can await it.
 function register(id: string, work: Promise<void>) {
-  const p = work.catch((e) => console.error("agent error:", e)).finally(() => jobs.delete(id));
-  jobs.set(id, p);
+  const job = work
+    .catch((erro) => logErro(`agente do card ${id}`, erro))
+    .finally(() => jobs.delete(id));
+  jobs.set(id, job);
 }
 
 function startAgent(id: string, columnId: string) {
@@ -116,7 +120,7 @@ export async function runCard(id: string, columnId?: string) {
     const cardForPrompt: Pick<Card, "title" | "description" | "history"> = {
       title: cardRow.title,
       description: cardRow.description,
-      history: board.cards.find((c) => c.id === id)?.history ?? [],
+      history: board.cards.find((card) => card.id === id)?.history ?? [],
     };
     const prompt = buildPrompt(col, cardForPrompt, project);
 
@@ -169,10 +173,6 @@ export async function runCard(id: string, columnId?: string) {
   if (chainTo) await moveCard(id, chainTo, { chained: true });
 }
 
-// Where does a finished autonomous run send the card? Plain columns always go to
-// onComplete; verdict columns read the agent's verdict and may bounce the card
-// back to onReject instead — bounded by MAX_REVIEW_CYCLES so dev↔review can't
-// ping-pong forever.
 function routeAfterRun(id: string, col: Column, output: string): string | null {
   if (!col.verdict || !col.onReject) return col.onComplete;
 
@@ -189,8 +189,8 @@ function routeAfterRun(id: string, col: Column, output: string): string | null {
   }
   if (verdict === "APPROVE") return col.onComplete;
 
-  const cycles = getCardRow(id)?.reviewCycles ?? 0;
-  if (cycles >= MAX_REVIEW_CYCLES) {
+  const ciclosGastos = getCardRow(id)?.reviewCycles ?? 0;
+  if (ciclosGastos >= MAX_REVIEW_CYCLES) {
     addRun({
       cardId: id,
       column: col.id,
@@ -203,7 +203,7 @@ function routeAfterRun(id: string, col: Column, output: string): string | null {
     return col.onComplete;
   }
 
-  setReviewCycles(id, cycles + 1);
+  setReviewCycles(id, ciclosGastos + 1);
   return col.onReject;
 }
 
@@ -233,7 +233,7 @@ async function runChatTurn(id: string) {
     const cardForPrompt = {
       title: cardRow.title,
       description: cardRow.description,
-      messages: board.cards.find((c) => c.id === id)?.messages ?? [],
+      messages: board.cards.find((card) => card.id === id)?.messages ?? [],
     };
     const prompt = buildChatPrompt(col, cardForPrompt, project);
 

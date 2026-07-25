@@ -1,42 +1,38 @@
 import { bus } from "../../../lib/bus";
 import { getBoard } from "../../../lib/store";
+import { logErro } from "../../../lib/log";
 
 export const dynamic = "force-dynamic";
 
-// Server-Sent Events: push the full board snapshot on connect and on every change.
+// Server-Sent Events: manda o board inteiro na conexão e a cada mudança.
 export async function GET(req: Request) {
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
     start(controller) {
-      const send = () => {
+      const enviar = (conteudo: string, contexto: string) => {
         try {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(getBoard())}\n\n`));
-        } catch {
-          /* stream closed */
+          controller.enqueue(encoder.encode(conteudo));
+        } catch (erro) {
+          logErro(`SSE ${contexto} (stream provavelmente fechado)`, erro);
         }
       };
 
-      send(); // initial snapshot
-      const onChange = () => send();
-      bus.on("change", onChange);
+      const enviarBoard = () => enviar(`data: ${JSON.stringify(getBoard())}\n\n`, "snapshot");
 
-      // Heartbeat keeps intermediaries from dropping an idle connection.
-      const ping = setInterval(() => {
-        try {
-          controller.enqueue(encoder.encode(": ping\n\n"));
-        } catch {
-          /* ignore */
-        }
-      }, 25000);
+      enviarBoard();
+      bus.on("change", enviarBoard);
+
+      // Heartbeat pra intermediários não derrubarem conexão ociosa.
+      const ping = setInterval(() => enviar(": ping\n\n", "ping"), 25000);
 
       req.signal.addEventListener("abort", () => {
         clearInterval(ping);
-        bus.off("change", onChange);
+        bus.off("change", enviarBoard);
         try {
           controller.close();
-        } catch {
-          /* already closed */
+        } catch (erro) {
+          logErro("fechamento do stream SSE (já fechado)", erro);
         }
       });
     },

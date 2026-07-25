@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MAX_REVIEW_CYCLES, parseVerdict, type Board } from "../lib/config";
+import { MAX_REVIEW_CYCLES, type Board } from "../lib/config";
+import { parseVerdict } from "../lib/verdict";
+import { pedirJson } from "../lib/http";
+import ProjectsPanel from "./ProjectsPanel";
 
 export default function BoardPage() {
   const [board, setBoard] = useState<Board | null>(null);
@@ -11,109 +14,223 @@ export default function BoardPage() {
   const [title, setTitle] = useState("");
   const [projectId, setProjectId] = useState("");
   const [chatInput, setChatInput] = useState("");
+  const [projectsOpen, setProjectsOpen] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [live, setLive] = useState(true);
 
   // Live board via SSE: server pushes a fresh snapshot on every change.
+  // Se a conexão cai (restart do dev server, sleep da máquina), o board da aba
+  // congela e a UI fica mentindo — daí o indicador + reconexão + refetch.
   useEffect(() => {
-    const es = new EventSource("/api/events");
-    es.onmessage = (e) => {
-      const data: Board = JSON.parse(e.data);
-      setBoard(data);
-      setProjectId((cur) => cur || data.projects[0]?.id || "");
+    let es: EventSource | null = null;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    let desmontado = false;
+
+    const aplicar = (snapshot: Board) => {
+      setBoard(snapshot);
+      // mantém a seleção, mas cai pro primeiro se o projeto escolhido sumiu
+      setProjectId((atual) =>
+        snapshot.projects.some((projeto) => projeto.id === atual)
+          ? atual
+          : snapshot.projects[0]?.id ?? ""
+      );
     };
-    return () => es.close();
+
+    const buscar = async () => {
+      const resultado = await pedirJson<Board>("/api/board");
+      if (resultado.ok && resultado.dados) aplicar(resultado.dados);
+    };
+
+    const conectar = () => {
+      es = new EventSource("/api/events");
+      es.onopen = () => setLive(true);
+      es.onmessage = (evento) => {
+        setLive(true);
+        aplicar(JSON.parse(evento.data));
+      };
+      es.onerror = () => {
+        es?.close();
+        if (desmontado) return;
+        setLive(false);
+        buscar();
+        retry = setTimeout(conectar, 3000);
+      };
+    };
+
+    buscar();
+    conectar();
+    return () => {
+      desmontado = true;
+      if (retry) clearTimeout(retry);
+      es?.close();
+    };
   }, []);
 
   if (!board) return <div style={{ padding: 24 }}>Carregando…</div>;
 
-  const cardsIn = (colId: string) => board.cards.filter((c) => c.columnId === colId);
+  const cardsIn = (colunaId: string) => board.cards.filter((card) => card.columnId === colunaId);
+
+  // Deriva do board em vez de confiar no state: se o projeto escolhido foi
+  // excluído, o <select> mostra a primeira opção enquanto o state ainda aponta
+  // pro id morto — e o card iria pro servidor com um projeto inexistente.
+  const projetoSelecionado =
+    board.projects.find((projeto) => projeto.id === projectId) ?? board.projects[0];
+  const semProjeto = board.projects.length === 0;
 
   async function move(id: string, toColumnId: string) {
-    const card = board!.cards.find((c) => c.id === id);
+    const card = board!.cards.find((candidato) => candidato.id === id);
     if (card && card.columnId === toColumnId) return;
     if (card && card.status === "running") {
-      const ok = window.confirm(
+      const confirmado = window.confirm(
         "Um agente está atuando neste card.\n\nMover irá CANCELAR a execução atual. Continuar?"
       );
-      if (!ok) return;
+      if (!confirmado) return;
     }
-    // optimistic; SSE will reconcile
-    setBoard((b) =>
-      b ? { ...b, cards: b.cards.map((c) => (c.id === id ? { ...c, columnId: toColumnId } : c)) } : b
+
+    setBoard((atual) =>
+      atual
+        ? {
+            ...atual,
+            cards: atual.cards.map((card) =>
+              card.id === id ? { ...card, columnId: toColumnId } : card
+            ),
+          }
+        : atual
     );
-    await fetch(`/api/cards/${id}/move`, {
+
+    const resultado = await pedirJson(`/api/cards/${id}/move`, {
       method: "POST",
       body: JSON.stringify({ toColumnId }),
     });
+    if (!resultado.ok) setErro(resultado.erro ?? "não foi possível mover o card");
   }
 
   async function runNow(id: string) {
-    await fetch(`/api/cards/${id}/run`, { method: "POST" });
+    const resultado = await pedirJson(`/api/cards/${id}/run`, { method: "POST" });
+    if (!resultado.ok) setErro(resultado.erro ?? "não foi possível rodar o agente");
   }
 
   async function removeCard(id: string) {
-    const card = board!.cards.find((c) => c.id === id);
+    const card = board!.cards.find((candidato) => candidato.id === id);
     if (!card) return;
-    const warn =
+
+    const aviso =
       card.status === "running"
         ? "Um agente está atuando neste card.\n\nExcluir irá CANCELAR a execução e apagar o card, seu histórico e sua conversa. Continuar?"
         : `Excluir "${card.title}"?\n\nO histórico do agente e a conversa vão junto. Não tem como desfazer.`;
-    if (!window.confirm(warn)) return;
-    // optimistic; SSE will reconcile
-    setBoard((b) => (b ? { ...b, cards: b.cards.filter((c) => c.id !== id) } : b));
-    setOpen((o) => (o === id ? null : o));
-    await fetch(`/api/cards/${id}`, { method: "DELETE" });
+    if (!window.confirm(aviso)) return;
+
+    setBoard((atual) =>
+      atual ? { ...atual, cards: atual.cards.filter((card) => card.id !== id) } : atual
+    );
+    setOpen((aberto) => (aberto === id ? null : aberto));
+
+    const resultado = await pedirJson(`/api/cards/${id}`, { method: "DELETE" });
+    if (!resultado.ok) setErro(resultado.erro ?? "não foi possível excluir o card");
   }
 
   async function sendChat(id: string) {
-    const text = chatInput.trim();
-    if (!text) return;
+    const texto = chatInput.trim();
+    if (!texto) return;
     setChatInput("");
-    await fetch(`/api/cards/${id}/message`, { method: "POST", body: JSON.stringify({ text }) });
+
+    const resultado = await pedirJson(`/api/cards/${id}/message`, {
+      method: "POST",
+      body: JSON.stringify({ text: texto }),
+    });
+    if (!resultado.ok) setErro(resultado.erro ?? "não foi possível enviar a mensagem");
   }
 
-  async function addCard(e: React.FormEvent) {
-    e.preventDefault();
-    if (!title.trim()) return;
-    await fetch("/api/cards", { method: "POST", body: JSON.stringify({ title, projectId }) });
+  async function addCard(evento: React.FormEvent) {
+    evento.preventDefault();
+    setErro(null);
+
+    if (!title.trim()) {
+      setErro("Escreva um título pro card.");
+      return;
+    }
+
+    const projetoDestino = projetoSelecionado?.id;
+    if (!projetoDestino) {
+      setErro("Cadastre um projeto antes (botão Projetos).");
+      return;
+    }
+
+    const resultado = await pedirJson("/api/cards", {
+      method: "POST",
+      body: JSON.stringify({ title, projectId: projetoDestino }),
+    });
+    if (!resultado.ok) {
+      setErro(resultado.erro ?? "não foi possível criar o card");
+      return;
+    }
+
+    setProjectId(projetoDestino);
     setTitle("");
   }
 
-  const openCard = board.cards.find((c) => c.id === open);
-  const openCol = openCard ? board.columns.find((c) => c.id === openCard.columnId) : null;
+  const openCard = board.cards.find((card) => card.id === open);
+  const openCol = openCard
+    ? board.columns.find((coluna) => coluna.id === openCard.columnId)
+    : null;
 
   return (
     <>
       <header>
         <h1>Agentic Kanban</h1>
         <span className="hint">solte um card numa coluna auto → o agente atua</span>
+        {!live && (
+          <span className="badge status-error" title="o board pode estar desatualizado">
+            ⚠ desconectado — reconectando…
+          </span>
+        )}
         <form className="new-card" onSubmit={addCard}>
           <input
             placeholder="Nova ideia…"
             value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(evento) => setTitle(evento.target.value)}
             style={{ width: 200 }}
+            disabled={semProjeto}
           />
-          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-            {board.projects.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name} · {p.tool}
+          <select
+            value={projetoSelecionado?.id ?? ""}
+            onChange={(evento) => setProjectId(evento.target.value)}
+            disabled={semProjeto}
+          >
+            {semProjeto && <option value="">sem projeto</option>}
+            {board.projects.map((projeto) => (
+              <option key={projeto.id} value={projeto.id}>
+                {projeto.name} · {projeto.tool}
               </option>
             ))}
           </select>
-          <button type="submit">Adicionar</button>
+          <button type="submit" disabled={semProjeto}>
+            Adicionar
+          </button>
+          <button type="button" className="ghost" onClick={() => setProjectsOpen(true)}>
+            Projetos ({board.projects.length})
+          </button>
         </form>
       </header>
+
+      {erro && (
+        <p className="top-error" onClick={() => setErro(null)} title="clique pra fechar">
+          ⚠ {erro}
+        </p>
+      )}
+
+      {projectsOpen && <ProjectsPanel board={board} onClose={() => setProjectsOpen(false)} />}
 
       <div className="board">
         {board.columns.map((col) => (
           <div
             key={col.id}
             className={`column ${dragOver === col.id ? "dragover" : ""}`}
-            onDragOver={(e) => {
-              e.preventDefault();
+            onDragOver={(evento) => {
+              evento.preventDefault();
               setDragOver(col.id);
             }}
-            onDragLeave={() => setDragOver((d) => (d === col.id ? null : d))}
+            onDragLeave={() => setDragOver((atual) => (atual === col.id ? null : atual))}
             onDrop={() => {
               setDragOver(null);
               if (dragId) move(dragId, col.id);
@@ -134,7 +251,7 @@ export default function BoardPage() {
             </h2>
 
             {cardsIn(col.id).map((card) => {
-              const project = board.projects.find((p) => p.id === card.projectId);
+              const project = board.projects.find((projeto) => projeto.id === card.projectId);
               return (
                 <div
                   key={card.id}
@@ -149,8 +266,8 @@ export default function BoardPage() {
                       className="ghost remove"
                       title="Excluir card"
                       aria-label={`Excluir ${card.title}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
+                      onClick={(evento) => {
+                        evento.stopPropagation();
                         removeCard(card.id);
                       }}
                     >
@@ -178,8 +295,8 @@ export default function BoardPage() {
                     <div className="actions">
                       <button
                         className="ghost"
-                        onClick={(e) => {
-                          e.stopPropagation();
+                        onClick={(evento) => {
+                          evento.stopPropagation();
                           runNow(card.id);
                         }}
                       >
@@ -218,10 +335,10 @@ export default function BoardPage() {
                 {openCard.messages.length === 0 && openCard.status !== "running" && (
                   <p className="hint">A conversa começa quando o card chega aqui.</p>
                 )}
-                {openCard.messages.map((m, i) => (
-                  <div key={i} className={`msg msg-${m.role}`}>
-                    <div className="msg-role">{m.role === "user" ? "Você" : "Agente"}</div>
-                    <div className="msg-body">{m.content}</div>
+                {openCard.messages.map((mensagem, indice) => (
+                  <div key={indice} className={`msg msg-${mensagem.role}`}>
+                    <div className="msg-role">{mensagem.role === "user" ? "Você" : "Agente"}</div>
+                    <div className="msg-body">{mensagem.content}</div>
                   </div>
                 ))}
                 {openCard.status === "running" && (
@@ -235,15 +352,15 @@ export default function BoardPage() {
               </div>
               <form
                 className="chat-input"
-                onSubmit={(e) => {
-                  e.preventDefault();
+                onSubmit={(evento) => {
+                  evento.preventDefault();
                   sendChat(openCard.id);
                 }}
               >
                 <input
                   placeholder={openCard.status === "running" ? "Aguarde a resposta…" : "Responda ao agente…"}
                   value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
+                  onChange={(evento) => setChatInput(evento.target.value)}
                   disabled={openCard.status === "running"}
                 />
                 <button type="submit" disabled={openCard.status === "running"}>
@@ -258,13 +375,15 @@ export default function BoardPage() {
               {openCard.history
                 .slice()
                 .reverse()
-                .map((h, i) => {
-                  const isVerdictCol = board.columns.find((c) => c.id === h.column)?.verdict;
-                  const verdict = isVerdictCol ? parseVerdict(h.output) : null;
+                .map((execucao, indice) => {
+                  const colunaDeVeredito = board.columns.find(
+                    (coluna) => coluna.id === execucao.column
+                  )?.verdict;
+                  const verdict = colunaDeVeredito ? parseVerdict(execucao.output) : null;
                   return (
-                    <details className="entry" key={i} open={i === 0}>
+                    <details className="entry" key={indice} open={indice === 0}>
                       <summary>
-                        <b>{h.column}</b>
+                        <b>{execucao.column}</b>
                         {verdict && (
                           <span
                             className={`badge ${
@@ -275,10 +394,10 @@ export default function BoardPage() {
                           </span>
                         )}
                         <span className="hint">
-                          {h.tool} · {h.ok ? "ok" : "erro"} · {h.at}
+                          {execucao.tool} · {execucao.ok ? "ok" : "erro"} · {execucao.at}
                         </span>
                       </summary>
-                      <pre>{h.output}</pre>
+                      <pre>{execucao.output}</pre>
                     </details>
                   );
                 })}

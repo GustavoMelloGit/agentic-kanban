@@ -129,30 +129,9 @@ export const COLUMNS: Column[] = [
   { id: "done", name: "Done", type: "manual", onComplete: null, persona: "", instruction: "" },
 ];
 
-// --- Verdicts --------------------------------------------------------------
-
-// How many times a verdict column may bounce a card back before it gives up
-// and parks the card in onComplete for a human to look at.
+// Quantas devoluções uma coluna de veredito pode fazer antes de desistir e
+// parar o card em onComplete pra decisão humana.
 export const MAX_REVIEW_CYCLES = 3;
-
-export type Verdict = "APPROVE" | "CHANGES_REQUESTED";
-
-// Read the verdict out of an agent's output. Returns null when the agent didn't
-// follow the format — callers treat that as "don't route, let a human decide".
-export function parseVerdict(output: string): Verdict | null {
-  // Preferred shape: a "VERDICT: X" line (tolerating markdown noise around it).
-  const tagged = output.match(/^\W*VERDICT\W+(APPROVE|CHANGES_REQUESTED)\b/im);
-  if (tagged) return tagged[1].toUpperCase() as Verdict;
-
-  // Fallback for agents that drop the prefix: accept the first non-empty line
-  // only when it is *nothing but* the verdict. Prose that merely mentions a
-  // verdict stays unparsed — the instruction itself names both words, so a
-  // loose match would happily read an echo of it as a real verdict.
-  const first = output.split("\n").find((l) => l.trim()) ?? "";
-  const bare = first.trim().match(/^\W*(APPROVED?|CHANGES_REQUESTED)\W*$/i);
-  if (bare) return /^C/i.test(bare[1]) ? "CHANGES_REQUESTED" : "APPROVE";
-  return null;
-}
 
 // --- Seed data (only used when the DB is empty) ----------------------------
 export const SEED_PROJECTS: Project[] = [

@@ -1,8 +1,9 @@
 import { runCard } from "../../../../../lib/engine";
+import { logErro } from "../../../../../lib/log";
 
-// Manually (re)trigger the agent for a card's current column.
+// Redispara o agente da coluna atual do card.
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  runCard(id).catch((e) => console.error("manual runCard error:", e));
+  runCard(id).catch((erro) => logErro(`run manual do card ${id}`, erro));
   return Response.json({ ok: true });
 }
