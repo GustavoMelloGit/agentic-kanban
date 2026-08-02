@@ -34,6 +34,9 @@ export interface Column {
   worktree?: boolean;
   // arriving here means the card's work is over: the worktree is removed.
   dropWorktree?: boolean;
+  // arriving here requires an open PR for the card's branch; the engine checks
+  // and records the URL — or the warning — in the card's history.
+  requiresPr?: boolean;
 }
 
 export interface Project {
@@ -135,7 +138,15 @@ export const COLUMNS: Column[] = [
       "The FIRST line of your output must be exactly `VERDICT: APPROVE` or `VERDICT: CHANGES_REQUESTED` (nothing else on that line). " +
       "Then a concise bullet list of findings. On CHANGES_REQUESTED, each bullet must be actionable — the developer agent gets this text as its only feedback.",
   },
-  { id: "human-review", name: "Human Review", type: "manual", onComplete: null, persona: "", instruction: "" },
+  {
+    id: "human-review",
+    name: "Human Review",
+    type: "manual",
+    onComplete: null,
+    requiresPr: true,
+    persona: "",
+    instruction: "",
+  },
   {
     id: "done",
     name: "Done",

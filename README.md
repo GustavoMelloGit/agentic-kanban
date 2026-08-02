@@ -99,6 +99,7 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 - `lib/bus.ts` — event bus in-process que alimenta o SSE
 - `lib/runner.ts` — monta o prompt e faz `spawn` da CLI no workspace (ou na worktree do card)
 - `lib/worktree.ts` — cria/reaproveita/remove a git worktree e a branch de cada card
+- `lib/pr.ts` — consulta a PR da branch do card via `gh` e descreve o resultado
 - `lib/transcript.ts` — formata a transcrição do chat pro prompt, com teto rígido de
   caracteres (o marcador de corte sai do próprio orçamento)
 - `lib/texto.ts` — normaliza texto vindo do corpo da requisição (`textoNaoVazio`)
@@ -136,6 +137,13 @@ pra branch base com `gh pr create` (instrução da coluna Development, em
 `lib/config.ts`). O corpo da PR é curto por regra — no máximo cinco linhas, só as
 decisões que levaram à solução. Detalhes em
 `.claude/rules/card-worktree-workflow.md`.
+
+Abrir a PR é instrução de prompt, e prompt não é garantia. Por isso a coluna com
+`requiresPr: true` (Human Review) dispara uma checagem ao receber o card: o motor
+roda `gh pr list --head <branch>` e escreve o desfecho no histórico — link da PR
+quando existe, aviso quando não existe ou quando o `gh` não respondeu. A consulta
+não segura a movimentação; a entrada aparece no drawer pelo SSE. Card que nunca
+passou por uma coluna de código não tem branch, então não é cobrado.
 
 ## Colunas de chat
 

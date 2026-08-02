@@ -98,6 +98,24 @@ async function resolverBase(raiz: string): Promise<string> {
   return "HEAD";
 }
 
+// A worktree do card, se já existir — sem criar nada. Para quem só precisa saber
+// em que branch o card está, como a checagem de PR.
+export async function worktreeExistente(opts: {
+  workspace: string;
+  cardId: string;
+}): Promise<Worktree | null> {
+  const raiz = await raizDoRepositorio(opts.workspace);
+  if (!raiz) return null;
+
+  const caminho = caminhoDaWorktree(raiz, opts.cardId);
+  if (!fs.existsSync(caminho)) return null;
+
+  const branch = await sondarGit(caminho, ["rev-parse", "--abbrev-ref", "HEAD"]);
+  if (!branch) return null;
+
+  return { caminho, branch, base: await resolverBase(raiz) };
+}
+
 // Devolve a worktree do card, criando-a na primeira vez e reaproveitando nas
 // seguintes (o card volta pra Development quando o review recusa). null = o
 // workspace não é repositório git. Erros de git de verdade sobem.
@@ -106,15 +124,13 @@ export async function prepararWorktree(opts: {
   cardId: string;
   titulo: string;
 }): Promise<Worktree | null> {
+  const jaCriada = await worktreeExistente(opts);
+  if (jaCriada) return jaCriada;
+
   const raiz = await raizDoRepositorio(opts.workspace);
   if (!raiz) return null;
 
   const caminho = caminhoDaWorktree(raiz, opts.cardId);
-  if (fs.existsSync(caminho)) {
-    const branch = await git(caminho, ["rev-parse", "--abbrev-ref", "HEAD"]);
-    return { caminho, branch, base: await resolverBase(raiz) };
-  }
-
   await ignorarPastaDasWorktrees(raiz);
   await gitOpcional(raiz, ["worktree", "prune"], `prune de worktrees em ${raiz}`);
 

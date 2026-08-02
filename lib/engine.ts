@@ -18,7 +18,13 @@ import { MAX_REVIEW_CYCLES, type Card, type Column, type Project } from "./confi
 import { parseVerdict } from "./verdict";
 import { logErro } from "./log";
 import { textoNaoVazio } from "./texto";
-import { prepararWorktree, removerWorktree, type Worktree } from "./worktree";
+import {
+  prepararWorktree,
+  removerWorktree,
+  worktreeExistente,
+  type Worktree,
+} from "./worktree";
+import { consultarPr, descreverConsultaDePr } from "./pr";
 
 // In-process state (single-process dev prototype).
 const running = new Set<string>();
@@ -64,6 +70,41 @@ async function limparWorktree(id: string, project: Project | undefined) {
   }
 }
 
+// Abrir a PR é instrução de prompt, e prompt não é garantia. Ao chegar em revisão
+// humana o motor confere e escreve o desfecho no histórico — com link quando
+// existe, com aviso quando não existe.
+async function registrarPr(id: string, columnId: string, project: Project | undefined) {
+  if (!project) {
+    logErro("checagem de PR", `card ${id} sem projeto; PR não verificada`);
+    return;
+  }
+
+  try {
+    const worktree = await worktreeExistente({
+      workspace: ensureWorkspaceDir(project.workspace),
+      cardId: id,
+    });
+    // sem worktree o card nunca passou por uma coluna de código: não há branch
+    // pra ter PR, e cobrar uma seria ruído no histórico
+    if (!worktree) return;
+
+    const consulta = await consultarPr({
+      repositorio: worktree.caminho,
+      branch: worktree.branch,
+    });
+
+    addRun({
+      cardId: id,
+      column: columnId,
+      ok: consulta.situacao === "encontrada",
+      output: descreverConsultaDePr(consulta, worktree.branch),
+      at: nowStamp(),
+    });
+  } catch (erro) {
+    logErro(`checagem de PR do card ${id}`, erro);
+  }
+}
+
 function startAgent(id: string, columnId: string) {
   register(id, runCard(id, columnId));
 }
@@ -87,6 +128,12 @@ export async function moveCard(id: string, toColumnId: string, opts: { chained?:
   if (!opts.chained && card && card.reviewCycles > 0) setReviewCycles(id, 0);
 
   setCardColumn(id, toColumnId);
+
+  // fora do await: a consulta ao `gh` vai na rede e seguraria o drag-and-drop.
+  // O resultado chega no histórico pelo SSE, e registrarPr não rejeita.
+  if (col.requiresPr && card) {
+    void registrarPr(id, col.id, getProject(card.projectId));
+  }
 
   if (col.dropWorktree && card) {
     await limparWorktree(id, getProject(card.projectId));

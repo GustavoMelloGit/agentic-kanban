@@ -41,6 +41,10 @@ If a PR is already open for the branch, pushing is enough — but update the bod
 when the decisions changed. If `gh` is missing or unauthenticated, push anyway
 and say so in the run output.
 
+Skipping this is visible: when the card reaches Human Review the engine runs
+`gh pr list --head <branch>` and writes the PR link — or a warning that there is
+none — into the card's history.
+
 ## PR description — short and direct
 
 The body says **which decisions got us to this solution**, nothing else. Maximum

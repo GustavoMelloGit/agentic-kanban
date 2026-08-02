@@ -5,6 +5,7 @@ import { MAX_REVIEW_CYCLES, type Board } from "../lib/config";
 import { parseVerdict } from "../lib/verdict";
 import { pedirJson } from "../lib/http";
 import ChatThread from "./ChatThread";
+import Markdown from "./Markdown";
 import ProjectsPanel from "./ProjectsPanel";
 
 export default function BoardPage() {
@@ -407,10 +408,13 @@ export default function BoardPage() {
                           </span>
                         )}
                         <span className="hint">
-                          {execucao.tool} · {execucao.ok ? "ok" : "erro"} · {execucao.at}
+                          {execucao.tool ? `${execucao.tool} · ` : ""}
+                          {execucao.ok ? "ok" : "erro"} · {execucao.at}
                         </span>
                       </summary>
-                      <pre>{execucao.output}</pre>
+                      <div className="entry-body">
+                        <Markdown content={execucao.output} />
+                      </div>
                     </details>
                   );
                 })}

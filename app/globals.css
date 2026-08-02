@@ -112,6 +112,12 @@ button.ghost.danger { color: var(--error); border-color: var(--error); }
   background: var(--bg); padding: 10px; border-radius: 6px; margin: 0 10px 10px;
   white-space: pre-wrap; word-break: break-word; font-size: 12px; max-height: 400px; overflow: auto;
 }
+/* mesma caixa do .drawer pre, mas pro output de execução renderizado como
+   markdown — o espaçamento interno passa a ser dos blocos do .markdown */
+.drawer .entry-body {
+  background: var(--bg); padding: 10px; border-radius: 6px; margin: 0 10px 10px;
+  font-size: 12px; max-height: 400px; overflow: auto;
+}
 .close { position: absolute; top: 14px; right: 16px; }
 
 /* modal de projetos */
