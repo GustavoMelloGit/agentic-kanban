@@ -95,7 +95,8 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 - `lib/schema.ts` — tabelas Drizzle (projects, cards, runs, messages, meta)
 - `lib/db.ts` — conexão SQLite, criação de schema, migrações e seed inicial
 - `lib/projects.ts` — validação do CRUD de projetos (nome, tool, workspace)
-- `lib/cards.ts` — validação de título/descrição do card (compartilhada por POST e PATCH)
+- `lib/cards.ts` — validação do corpo do card: `validateNewCard` (POST, exige título e recusa
+  `projectId` que não seja texto) e `validateCardPatch` (PATCH, só título e descrição)
 - `lib/store.ts` — queries/mutations tipadas + `getBoard()`; emite mudança no bus
 - `lib/bus.ts` — event bus in-process que alimenta o SSE
 - `lib/runner.ts` — monta o prompt e faz `spawn` da CLI no workspace (ou na worktree do card)
