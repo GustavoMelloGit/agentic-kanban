@@ -98,6 +98,7 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 - `lib/store.ts` — queries/mutations tipadas + `getBoard()`; emite mudança no bus
 - `lib/bus.ts` — event bus in-process que alimenta o SSE
 - `lib/runner.ts` — monta o prompt e faz `spawn` da CLI no workspace
+- `lib/transcript.ts` — formata a transcrição do chat pro prompt, com teto de caracteres
 - `lib/engine.ts` — mover card, disparar/cancelar agente, encadear colunas e
   rotear pelo veredito (`routeAfterRun`)
 - `app/api/*` — endpoints REST + `events` (SSE):
@@ -116,6 +117,13 @@ run one-shot. Ao chegar o card, o agente abre a conversa; suas respostas
 (`POST /api/cards/:id/message`) disparam novos turnos. A transcrição inteira é
 reenviada a cada turno, então funciona com qualquer CLI (sem `--resume` nativo).
 As mensagens ficam na tabela `messages` e a UI mostra o thread no drawer.
+
+A conversa segue com o card: ao entrar numa coluna de execução, a transcrição vai
+no prompt como `## Requirements discussion (Enrichment)` — é assim que o
+refinamento chega no dev agent e no review. O drawer mostra a conversa em
+qualquer coluna (só leitura fora da coluna de chat) ao lado do histórico de runs.
+Transcrição muito longa é cortada pelo começo, porque o fim é onde mora o resumo
+dos requisitos.
 
 ## Próximos passos
 
