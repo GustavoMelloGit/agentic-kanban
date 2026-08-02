@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Listing } from "../lib/fsbrowse";
 import { pedirJson } from "../lib/http";
+import Icon from "./Icon";
 
 function urlDaListagem(caminho?: string): string {
   return `/api/fs${caminho ? `?path=${encodeURIComponent(caminho)}` : ""}`;
@@ -64,13 +65,19 @@ export default function DirPicker({
         <code title={listagem?.path}>{listagem?.display ?? "…"}</code>
       </div>
 
-      {erro && <p className="form-error">⚠ {erro}</p>}
+      {erro && (
+        <p className="form-error" role="alert">
+          <Icon name="alerta" size={13} />
+          {erro}
+        </p>
+      )}
 
       <ul className="dp-list">
         {listagem?.parent && (
           <li>
             <button className="ghost" onClick={() => abrir(listagem.parent!)}>
-              ⬆ ..
+              <Icon name="subir" size={13} />
+              pasta acima
             </button>
           </li>
         )}
@@ -78,7 +85,8 @@ export default function DirPicker({
         {listagem?.entries.map((pasta) => (
           <li key={pasta.path}>
             <button className="ghost" onClick={() => abrir(pasta.path)} title={pasta.path}>
-              📁 {pasta.name}
+              <Icon name="pasta" size={13} />
+              {pasta.name}
               {pasta.git && <span className="badge">git</span>}
             </button>
           </li>

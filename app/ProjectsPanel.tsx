@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Board, Project } from "../lib/config";
 import { pedirJson } from "../lib/http";
 import DirPicker from "./DirPicker";
+import Icon from "./Icon";
 
 type Draft = Omit<Project, "id">;
 
@@ -90,16 +91,27 @@ export default function ProjectsPanel({ board, onClose }: { board: Board; onClos
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(evento) => evento.stopPropagation()}>
-        <button className="close ghost" onClick={onClose}>
-          fechar
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Projetos"
+        onClick={(evento) => evento.stopPropagation()}
+      >
+        <button className="close ghost" aria-label="Fechar projetos" onClick={onClose}>
+          <Icon name="fechar" size={16} />
         </button>
         <h3>Projetos</h3>
         <p className="hint">
           Cada card pertence a um projeto, que define <b>qual CLI</b> roda e <b>em qual diretório</b>.
         </p>
 
-        {erro && <p className="form-error">⚠ {erro}</p>}
+        {erro && (
+          <p className="form-error" role="alert">
+            <Icon name="alerta" size={13} />
+            {erro}
+          </p>
+        )}
 
         <table className="projects">
           <thead>
@@ -152,9 +164,10 @@ export default function ProjectsPanel({ board, onClose }: { board: Board; onClos
                         type="button"
                         className="ghost"
                         title="escolher pasta"
+                        aria-label={`Escolher pasta do projeto ${draft.name || projeto.id}`}
                         onClick={() => setPicking(picking === projeto.id ? null : projeto.id)}
                       >
-                        📁
+                        <Icon name="pasta" size={14} />
                       </button>
                     </div>
                     {picking === projeto.id && (
@@ -218,9 +231,10 @@ export default function ProjectsPanel({ board, onClose }: { board: Board; onClos
                 type="button"
                 className="ghost"
                 title="escolher pasta"
+                aria-label="Escolher pasta do novo projeto"
                 onClick={() => setPicking(picking === NOVO ? null : NOVO)}
               >
-                📁
+                <Icon name="pasta" size={14} />
               </button>
             </div>
             <button type="submit" disabled={ocupado || !novo.name.trim() || !novo.workspace.trim()}>
@@ -238,7 +252,8 @@ export default function ProjectsPanel({ board, onClose }: { board: Board; onClos
             />
           )}
           <p className="hint">
-            Dá pra digitar o caminho ou clicar em 📁 pra navegar. O diretório é criado se não existir.
+            Dá pra digitar o caminho ou usar o botão de pasta pra navegar. O diretório é criado se
+            não existir.
           </p>
         </form>
       </div>

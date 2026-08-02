@@ -6,6 +6,7 @@ import { parseVerdict } from "../lib/verdict";
 import { pedirJson } from "../lib/http";
 import { semMarcadoresDeCancelamento } from "../lib/cancelamento";
 import ChatThread from "./ChatThread";
+import Icon from "./Icon";
 import Markdown from "./Markdown";
 import ProjectsPanel from "./ProjectsPanel";
 
@@ -29,6 +30,16 @@ export default function BoardPage() {
   useEffect(() => {
     cardNaTela.current = open;
   }, [open]);
+
+  // Rota de saída do drawer pelo teclado: sem isso o único jeito de fechar é
+  // achar o botão no canto.
+  useEffect(() => {
+    const aoTeclar = (evento: KeyboardEvent) => {
+      if (evento.key === "Escape") setOpen(null);
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, []);
 
   // Live board via SSE: server pushes a fresh snapshot on every change.
   // Se a conexão cai (restart do dev server, sleep da máquina), o board da aba
@@ -210,12 +221,20 @@ export default function BoardPage() {
 
   return (
     <>
+      <a className="skip-link" href="#board">
+        Pular para o board
+      </a>
       <header>
         <h1>Agentic Kanban</h1>
         <span className="hint">solte um card numa coluna auto → o agente atua</span>
         {!live && (
-          <span className="badge status-error" title="o board pode estar desatualizado">
-            ⚠ desconectado — reconectando…
+          <span
+            className="badge status-error"
+            role="status"
+            title="o board pode estar desatualizado"
+          >
+            <Icon name="desconectado" size={12} />
+            desconectado — reconectando…
           </span>
         )}
         <form className="new-card" onSubmit={addCard}>
@@ -248,14 +267,18 @@ export default function BoardPage() {
       </header>
 
       {erro && (
-        <p className="top-error" onClick={() => setErro(null)} title="clique pra fechar">
-          ⚠ {erro}
-        </p>
+        <div className="top-error" role="alert">
+          <Icon name="alerta" size={14} />
+          <span>{erro}</span>
+          <button className="ghost dismiss" aria-label="Fechar aviso" onClick={() => setErro(null)}>
+            <Icon name="fechar" size={14} />
+          </button>
+        </div>
       )}
 
       {projectsOpen && <ProjectsPanel board={board} onClose={() => setProjectsOpen(false)} />}
 
-      <div className="board">
+      <main className="board" id="board">
         {board.columns.map((col) => (
           <div
             key={col.id}
@@ -274,15 +297,28 @@ export default function BoardPage() {
             <h2>
               {col.name}
               <span className={`tag ${col.type !== "manual" ? "auto" : ""}`}>
-                {col.type === "autonomous"
-                  ? `⚡ autonomous → ${col.onComplete || "—"}${
-                      col.onReject ? ` · ↩ ${col.onReject}` : ""
-                    }`
-                  : col.type === "automated"
-                  ? "🤖 automated (fica)"
-                  : "manual"}
+                {col.type === "autonomous" && (
+                  <>
+                    <Icon name="raio" size={12} />
+                    autonomous → {col.onComplete || "—"}
+                    {col.onReject && ` · ↩ ${col.onReject}`}
+                  </>
+                )}
+                {col.type === "automated" && (
+                  <>
+                    <Icon name="robo" size={12} />
+                    automated (fica)
+                  </>
+                )}
+                {col.type === "manual" && "manual"}
               </span>
             </h2>
+
+            {cardsIn(col.id).length === 0 && (
+              <p className="empty">
+                {col.type === "manual" ? "Nenhum card aqui." : "Solte um card pra o agente atuar."}
+              </p>
+            )}
 
             {cardsIn(col.id).map((card) => {
               const project = board.projects.find((projeto) => projeto.id === card.projectId);
@@ -295,7 +331,18 @@ export default function BoardPage() {
                   onClick={() => setOpen(card.id)}
                 >
                   <div className="title">
-                    <span>{card.title}</span>
+                    {/* botão de verdade em vez de clique no container: o card tem
+                        controles dentro, então role="button" nele seria ARIA inválido
+                        e o teclado ficaria sem como abrir o drawer */}
+                    <button
+                      className="card-open"
+                      onClick={(evento) => {
+                        evento.stopPropagation();
+                        setOpen(card.id);
+                      }}
+                    >
+                      {card.title}
+                    </button>
                     <button
                       className="ghost remove"
                       title="Excluir card"
@@ -305,7 +352,7 @@ export default function BoardPage() {
                         removeCard(card.id);
                       }}
                     >
-                      ✕
+                      <Icon name="fechar" size={14} />
                     </button>
                   </div>
                   {card.description && <div className="desc">{card.description}</div>}
@@ -314,14 +361,17 @@ export default function BoardPage() {
                       {project?.name} · {project?.tool}
                     </span>
                     <span className={`badge status-${card.status}`}>
-                      {card.status === "running" && <span className="spinner">◐</span>} {card.status}
+                      {card.status === "running" && <Icon name="girando" size={11} className="spinner" />}
+                      {card.status === "error" && <Icon name="alerta" size={11} />}
+                      {card.status}
                     </span>
                     {card.reviewCycles > 0 && (
                       <span
                         className="badge verdict-rejected"
                         title={`Review devolveu o card ${card.reviewCycles}x (limite ${MAX_REVIEW_CYCLES})`}
                       >
-                        ↩ {card.reviewCycles}/{MAX_REVIEW_CYCLES}
+                        <Icon name="devolvido" size={11} />
+                        {card.reviewCycles}/{MAX_REVIEW_CYCLES}
                       </span>
                     )}
                   </div>
@@ -335,6 +385,7 @@ export default function BoardPage() {
                           cancelarOperacao(card.id, !col.chat);
                         }}
                       >
+                        <Icon name="cancelar" size={12} />
                         {cancelandoId === card.id ? "cancelando…" : "Cancelar operação"}
                       </button>
                     </div>
@@ -349,6 +400,7 @@ export default function BoardPage() {
                             runNow(card.id);
                           }}
                         >
+                          <Icon name="recomecar" size={12} />
                           Rodar agente de novo
                         </button>
                       </div>
@@ -356,7 +408,10 @@ export default function BoardPage() {
                   )}
                   {card.messages.length > 0 && (
                     <div className="meta">
-                      <span className="badge">💬 {card.messages.length}</span>
+                      <span className="badge" title={`${card.messages.length} mensagens na conversa`}>
+                        <Icon name="conversa" size={11} />
+                        {card.messages.length}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -364,12 +419,16 @@ export default function BoardPage() {
             })}
           </div>
         ))}
-      </div>
+      </main>
 
       {openCard && (
-        <div className="drawer">
-          <button className="close ghost" onClick={() => setOpen(null)}>
-            fechar
+        <aside className="drawer" aria-label={`Detalhes do card ${openCard.title}`}>
+          <button
+            className="close ghost"
+            aria-label="Fechar detalhes do card"
+            onClick={() => setOpen(null)}
+          >
+            <Icon name="fechar" size={16} />
           </button>
           <h3>{openCard.title}</h3>
           <p className="desc">{openCard.description}</p>
@@ -380,10 +439,12 @@ export default function BoardPage() {
                 disabled={cancelandoId === openCard.id}
                 onClick={() => cancelarOperacao(openCard.id, true)}
               >
+                <Icon name="cancelar" size={14} />
                 {cancelandoId === openCard.id ? "cancelando…" : "Cancelar operação"}
               </button>
             )}
             <button className="ghost danger" onClick={() => removeCard(openCard.id)}>
+              <Icon name="excluir" size={14} />
               Excluir card
             </button>
           </div>
@@ -435,7 +496,8 @@ export default function BoardPage() {
           {!openCol?.chat && openCard.messages.length > 0 && (
             <details className="entry chat-archive">
               <summary>
-                <b>💬 Conversa</b>
+                <Icon name="conversa" size={14} />
+                <b>Conversa</b>
                 <span className="hint">{openCard.messages.length} mensagens · só leitura</span>
               </summary>
               <ChatThread messages={openCard.messages} pensando={false} />
@@ -464,7 +526,8 @@ export default function BoardPage() {
                               verdict === "APPROVE" ? "verdict-approved" : "verdict-rejected"
                             }`}
                           >
-                            {verdict === "APPROVE" ? "✓ APPROVE" : "↩ CHANGES_REQUESTED"}
+                            <Icon name={verdict === "APPROVE" ? "aprovado" : "devolvido"} size={11} />
+                            {verdict === "APPROVE" ? "APPROVE" : "CHANGES_REQUESTED"}
                           </span>
                         )}
                         <span className="hint">
@@ -480,7 +543,7 @@ export default function BoardPage() {
                 })}
             </>
           )}
-        </div>
+        </aside>
       )}
     </>
   );

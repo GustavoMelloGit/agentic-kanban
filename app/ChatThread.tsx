@@ -1,6 +1,7 @@
 "use client";
 
 import type { ChatMessage } from "../lib/config";
+import Icon from "./Icon";
 import Markdown from "./Markdown";
 
 export default function ChatThread({
@@ -23,8 +24,9 @@ export default function ChatThread({
       {pensando && (
         <div className="msg msg-agent">
           <div className="msg-role">Agente</div>
-          <div className="msg-body hint">
-            <span className="spinner">◐</span> pensando…
+          <div className="msg-body hint" role="status">
+            <Icon name="girando" size={13} className="spinner" />
+            pensando…
           </div>
         </div>
       )}

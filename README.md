@@ -112,6 +112,10 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 - `app/page.tsx` — board (drag-and-drop, atualiza via `EventSource`)
 - `app/ProjectsPanel.tsx` — modal de CRUD de projetos (botão "Projetos" no header)
 - `app/DirPicker.tsx` — seletor de pasta do workspace
+- `app/ChatThread.tsx` — thread do chat; resposta do agente vai por `app/Markdown.tsx`
+- `app/Icon.tsx` — ícones SVG do board (nenhum emoji como ícone estrutural)
+- `app/globals.css` — tokens de cor/espaço/tipografia/movimento + estilos
+  (identidade documentada em `.claude/rules/design-system.md`)
 - `lib/fsbrowse.ts` — listagem/criação de diretórios com limite em `$HOME` + raiz do app
 
 ## Isolamento por card (worktree + branch + PR)
