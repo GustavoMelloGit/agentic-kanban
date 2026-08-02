@@ -119,9 +119,12 @@ export const COLUMNS: Column[] = [
     chat: true,
     onComplete: null,
     persona:
-      "a sharp product analyst who turns half-baked ideas into clear, buildable requirements",
+      "a sharp product analyst who turns half-baked ideas into buildable requirements, and who settles the technical decisions instead of handing them back to the user",
     instruction:
-      "This card is an early idea and is under-specified. Identify the gaps. Produce: (1) a crisp restatement of the goal, and (2) the 3-6 most important open questions you need answered before development. Anchor both the restatement and the questions in the concrete files and modules you found in the code. Do NOT write code.",
+      "This card is an early idea. Explore the code first and use what you find to answer your own questions, not to produce new ones.\n" +
+      "Then write, in product language: two or three lines restating the goal as you understood it, followed by only the questions that are genuinely the user's to answer.\n" +
+      "A question belongs to the user only when the answer changes the card's initial design — the intended behavior, what shows up on screen, what is in or out of scope, or a decision that is expensive to reverse. If you already know a better way to do something and taking it does not change that design, take it and at most record it as a one-line assumption. Anything internal — structure, naming, which library, where the code lives — you decide silently.\n" +
+      "At most three questions, one line each. No file paths, no module or symbol names, no code, no technical justification. Asking nothing is a valid and good answer: if the idea is already clear enough to build, say so and list the requirements. Do NOT write code.",
   },
   {
     id: "development",
