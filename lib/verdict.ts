@@ -23,11 +23,11 @@ export interface TurnoDeChat {
   texto: string;
 }
 
-// Duas regras diferentes de propósito. Rotear só quando o marcador encerra o
-// turno: casar em qualquer linha, como parseVerdict faz, devolveria o card só
-// porque o agente citou o formato ao explicar o fluxo pro humano. Já limpar o
-// texto vale em qualquer posição — marcador é protocolo, e o que não roteou não
-// deveria aparecer no thread como se fosse conversa.
+// Rotear só quando o marcador encerra o turno: casar em qualquer linha, como
+// parseVerdict faz, devolveria o card só porque o agente citou o formato ao
+// explicar o fluxo pro humano. E só a linha que roteou sai do texto — apagar um
+// marcador que ficou no meio da resposta esconderia do humano a única evidência
+// de que o agente tentou encerrar o turno e o card não saiu da coluna.
 export function separarVeredito(saida: string): TurnoDeChat {
   const linhas = saida.split("\n");
   const ultimaLinhaComTexto = linhas.reduce(
@@ -39,10 +39,12 @@ export function separarVeredito(saida: string): TurnoDeChat {
       ? null
       : linhas[ultimaLinhaComTexto].trim().match(LINHA_FINAL_DE_VEREDITO);
 
+  if (!marcadorQueEncerra) return { verdict: null, texto: saida.trim() };
+
   return {
-    verdict: marcadorQueEncerra ? (marcadorQueEncerra[1].toUpperCase() as Verdict) : null,
+    verdict: marcadorQueEncerra[1].toUpperCase() as Verdict,
     texto: linhas
-      .filter((linha) => !LINHA_FINAL_DE_VEREDITO.test(linha.trim()))
+      .filter((_, posicao) => posicao !== ultimaLinhaComTexto)
       .join("\n")
       .trim(),
   };
