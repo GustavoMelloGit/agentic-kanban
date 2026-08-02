@@ -42,6 +42,12 @@ export default function CardDrawer({
   // Thread só com marcador de cancelamento é conversa que nunca começou — é o
   // que o agente enxerga no prompt, então é o que o placeholder deve refletir.
   const conversaReal = semMarcadoresDeCancelamento(card.messages);
+  // Coluna de chat manual não dispara agente na chegada: quem abre a conversa é
+  // o humano. A branch é condicional porque o card pode ter pulado Development.
+  const placeholderDaConversa =
+    column?.type === "manual"
+      ? "Pergunte sobre a implementação ou peça uma mudança — o agente lê a branch do card, quando houver uma."
+      : "A conversa começa quando o card chega aqui.";
 
   return (
     // 640px e não 560: o output do agente vem cheio de nome de branch e URL de
@@ -103,9 +109,7 @@ export default function CardDrawer({
       {ehChat ? (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           {card.messages.length === 0 && !rodando ? (
-            <p className="text-muted-foreground text-xs">
-              A conversa começa quando o card chega aqui.
-            </p>
+            <p className="text-muted-foreground text-xs">{placeholderDaConversa}</p>
           ) : (
             <ChatThread messages={card.messages} pensando={rodando} />
           )}

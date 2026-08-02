@@ -11,6 +11,22 @@ export interface Tool {
   args: string[]; // "{{prompt}}" is replaced with the built prompt at spawn time
 }
 
+// The column-specific half of a chat prompt. Everything a chat turn shares
+// (card, transcript, git isolation) is assembled by buildChatPrompt.
+export interface ChatPrompt {
+  // tone and limits of the conversation, repeated in every turn
+  briefing: string;
+  // the agent's first turn, when the thread is still empty. Absent in columns
+  // where the human always speaks first.
+  opening?: string;
+  // what to do after reading the transcript, in every later turn
+  continuation: string;
+  // how the agent's own turns are labelled in the transcript. "You" only fits a
+  // column that owns the whole thread; the default neutral label is what a
+  // column reading turns written in *other* columns needs.
+  agentLabel?: string;
+}
+
 export interface Column {
   id: string;
   name: string;
@@ -23,10 +39,13 @@ export interface Column {
   persona: string;
   instruction: string;
   // chat columns hold a back-and-forth conversation instead of a one-shot run.
-  // On arrival the agent opens the conversation; the user replies drive more turns.
+  // In an "autonomous"/"automated" column the agent opens it on arrival; in a
+  // "manual" one the human speaks first. Either way, replies drive more turns.
   chat?: boolean;
+  chatPrompt?: ChatPrompt;
   // verdict columns end their run with "VERDICT: APPROVE | CHANGES_REQUESTED".
   // On CHANGES_REQUESTED the card goes to onReject instead of onComplete.
+  // In a chat column the marker only counts on the last line of a turn.
   verdict?: boolean;
   onReject?: string | null;
   // worktree columns run their agent inside the card's own git worktree and
@@ -102,6 +121,15 @@ export const TOOLS: Record<string, Tool> = {
 };
 
 // --- Columns ---------------------------------------------------------------
+
+// The chat is re-spawned every turn (no native session), so a column that wants
+// the agent to know the code has to say it in every turn.
+const WORKSPACE_EXPLORATION_DIRECTIVE =
+  "You are running inside this project's workspace: the current working directory IS the project. " +
+  "Before restating the goal or asking anything, explore the workspace to understand it for real — this is read-only, do NOT modify anything. " +
+  "Read the README and any documentation, the dependency manifest (package.json or its equivalent), the folder structure, and the modules relevant to what this card asks for. " +
+  "Ground your restatement and every question in what you actually find in the code — the real stack, conventions, current state, and concrete files — never in generic assumptions.";
+
 export const COLUMNS: Column[] = [
   {
     id: "ideas",
@@ -122,6 +150,19 @@ export const COLUMNS: Column[] = [
       "a sharp product analyst who turns half-baked ideas into clear, buildable requirements",
     instruction:
       "This card is an early idea and is under-specified. Identify the gaps. Produce: (1) a crisp restatement of the goal, and (2) the 3-6 most important open questions you need answered before development. Anchor both the restatement and the questions in the concrete files and modules you found in the code. Do NOT write code.",
+    chatPrompt: {
+      briefing:
+        "You are refining a Kanban card through a short back-and-forth with the user. " +
+        "Ask focused questions in small batches, progressively filling the gaps. " +
+        "Keep replies concise and conversational. Do NOT write code.\n" +
+        WORKSPACE_EXPLORATION_DIRECTIVE,
+      opening:
+        "Explore the workspace first as instructed above, then open the conversation: give a brief, code-grounded read of the idea and your first questions.",
+      continuation:
+        "Respond to the user's latest message. Ask further questions if gaps remain, or — if the requirements now look complete — summarize the finalized requirements and acceptance criteria and say they're ready for development.",
+      // O refinamento é a primeira coluna do thread: tudo que está lá é turno seu.
+      agentLabel: "You",
+    },
   },
   {
     id: "development",
@@ -156,8 +197,31 @@ export const COLUMNS: Column[] = [
     type: "manual",
     onComplete: null,
     requiresPr: true,
-    persona: "",
+    // manual + chat: nothing runs on arrival, the human opens the conversation.
+    // The only move the agent can make from here is back to Development.
+    chat: true,
+    verdict: true,
+    onReject: "development",
+    worktree: true,
+    persona: "a senior engineer walking a human reviewer through the change already on this card's branch",
+    // Sem run one-shot: aqui quem fala primeiro é o humano, então todo o trabalho
+    // da coluna é descrito no chatPrompt, que se repete a cada turno.
     instruction: "",
+    chatPrompt: {
+      briefing:
+        "You are answering a human who is reviewing this card's change before approving it. " +
+        "The change is implemented and pushed: read the diff of the branch against the base (both named in the Git isolation section) plus anything still uncommitted, and ground every answer in it — cite the concrete files and lines you read on the branch, never the base version. " +
+        "If there is no Git isolation section, this card never went through Development: say there is no branch to review instead of guessing what changed.\n" +
+        "Do NOT write, edit or commit code — this column reviews, it does not implement. " +
+        "Keep replies short and concrete — they are reading a diff, not a report. " +
+        "Answering a question is a complete turn: the card only leaves this column when the human's change request is settled. " +
+        "Approving is the human's move, never yours.",
+      continuation:
+        "Earlier turns in the transcript may have been written by agents of other columns of this board, not by you — only the human's latest message is the request you are answering now. " +
+        "If it is a question, answer it and stop. " +
+        "If it is a change request, make sure you understand exactly what must change — ask when it is vague — and only then write the request as the developer agent must receive it (what to change, in which files, and why), and close the turn with a final line that is exactly `VERDICT: CHANGES_REQUESTED`. " +
+        "That line sends the card back to Development, so never write it while anything is still being discussed, and never write it just to acknowledge a question.",
+    },
   },
   {
     id: "done",
