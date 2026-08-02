@@ -103,9 +103,11 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
   `MAX_REVIEW_CYCLES` (3), o card para em Human Review com um aviso no histórico.
   Qualquer movimentação manual do card zera o contador.
 
-Num run one-shot o marcador vale na primeira linha; **numa coluna de chat só
-roteia na última linha não vazia do turno** (`separarVeredito`), senão o agente
-devolveria o card só por citar o formato ao explicar o fluxo. A linha do marcador
+Em coluna de chat só `CHANGES_REQUESTED` roteia: `onComplete` é `null`, então
+aprovar continua sendo movimento seu, no arrasto para Done. Num run one-shot o
+marcador vale na primeira linha; **numa coluna de chat só roteia na última linha
+não vazia do turno** (`separarVeredito`), senão o agente devolveria o card só por
+citar o formato ao explicar o fluxo. A linha do marcador
 sai do texto onde quer que apareça — mesmo quando não roteou, ela é protocolo e
 não conversa — e o thread mostra "↩ card devolvido para Development" no lugar. O
 pedido inteiro vai pro histórico, que é o canal que o dev agent lê. Devolução

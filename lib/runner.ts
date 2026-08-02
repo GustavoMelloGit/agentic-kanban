@@ -16,7 +16,7 @@ const COMMIT_RULE =
 
 const CHAT_TURN_PREAMBLE =
   "This chat is re-spawned from scratch every turn — the transcript above is your only memory, " +
-  "so re-orient yourself in the code whenever you need to keep your answers anchored in what is really there.";
+  "so re-orient yourself in the workspace whenever you need to keep your answers anchored in the real code.";
 
 function gitIsolationSection(worktree: Worktree): string {
   return (

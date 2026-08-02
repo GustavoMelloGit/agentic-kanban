@@ -33,10 +33,14 @@ function detalhesDaColuna(col: Column, colunas: Column[]): string[] {
 
   if (col.chat) linhas.push("Segura uma conversa em vez de uma execução única.");
   if (col.onComplete) linhas.push(`Ao terminar, vai para ${nomeDe(col.onComplete)}.`);
+  // Numa coluna de chat o veredito só tem a saída de trás: aprovar é movimento
+  // do humano, e o pedido dele não gasta o orçamento de ciclos da revisão de IA.
   if (col.verdict && col.onReject) {
     linhas.push(
-      `O agente fecha com um veredito: APPROVE segue o fluxo, CHANGES_REQUESTED devolve para ` +
-        `${nomeDe(col.onReject)} — até ${MAX_REVIEW_CYCLES} vezes.`
+      col.chat
+        ? `Quando o pedido de mudança fecha, o agente devolve o card para ${nomeDe(col.onReject)}.`
+        : `O agente fecha com um veredito: APPROVE segue o fluxo, CHANGES_REQUESTED devolve para ` +
+            `${nomeDe(col.onReject)} — até ${MAX_REVIEW_CYCLES} vezes.`
     );
   }
   if (col.entryPoint) linhas.push("Porta de entrada: é aqui que novos cards nascem.");
