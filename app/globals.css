@@ -180,15 +180,29 @@
      item comum */
   .markdown .task-list-item { list-style: none; }
   .markdown .task-list-item input { margin: 0 6px 2px -20px; }
-  .markdown a { color: var(--brand-text); text-decoration: underline; }
+  /* URL de PR não cabe em 500px: "anywhere" deixa quebrar sem estourar o
+     container, e ao contrário de break-word não força a quebra cedo demais */
+  .markdown a {
+    color: var(--brand-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    overflow-wrap: anywhere;
+  }
+  /* sem borda e com tinta leve: a saída do agente é cheia de identificador em
+     crase, e uma caixa desenhada por termo pica o parágrafo inteiro. Medida em
+     em pra acompanhar o contexto (bolha do chat 14px, histórico 12px), e o
+     padding vertical em em pra não inflar a entrelinha */
   .markdown code {
-    background: var(--background);
-    border: 1px solid var(--border);
+    background: color-mix(in oklab, var(--foreground) 12%, transparent);
     border-radius: 4px;
-    padding: 1px 4px;
+    padding: 0.1em 0.35em;
     font-family: var(--font-mono);
-    font-size: 12px;
-    word-break: break-word;
+    font-size: 0.92em;
+    overflow-wrap: anywhere;
+    /* nome de branch longo quebra em duas linhas; sem o clone, o fundo é
+       desenhado uma vez só e o segundo pedaço sai sem caixa */
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
   }
   /* no bloco de código a linha longa rola em vez de quebrar no meio do
      identificador */

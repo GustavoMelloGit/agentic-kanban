@@ -42,9 +42,11 @@ export default function CardDrawer({
   const conversaReal = semMarcadoresDeCancelamento(card.messages);
 
   return (
+    // 640px e não 560: o output do agente vem cheio de nome de branch e URL de
+    // PR, que em 560 quebravam no meio do identificador
     <aside
       aria-label={`Detalhes do card ${card.title}`}
-      className="bg-surface fixed top-(--header-h) right-0 z-10 h-[calc(100vh-var(--header-h))] w-140 max-w-[92vw] overflow-y-auto border-l p-6 shadow-2xl"
+      className="bg-surface fixed top-(--header-h) right-0 z-10 h-[calc(100vh-var(--header-h))] w-160 max-w-[92vw] overflow-y-auto border-l p-6 shadow-2xl"
     >
       <Button
         variant="outline"

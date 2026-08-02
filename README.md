@@ -132,8 +132,8 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 | Camada | Onde | O que é | Exemplos |
 |---|---|---|---|
 | **ui** | `components/ui/` | primitivas do shadcn, geradas pela CLI — não editar à mão sem motivo | `button`, `dialog`, `select`, `collapsible` |
-| **atoms** | `components/atoms/` | um elemento, sem regra de negócio | `Icon`, `Spinner`, `StatusBadge`, `VerdictBadge`, `EmptyState`, `SkipLink`, `Markdown` |
-| **molecules** | `components/molecules/` | poucos átomos com um propósito | `CardComposer`, `AddCardTrigger`, `CardMeta`, `CardActions`, `ChatMessage`, `ChatComposer`, `ColumnHeader`, `ErrorBanner`, `ProjectRow`, `WorkspaceField`, `ConnectionStatus` |
+| **atoms** | `components/atoms/` | um elemento, sem regra de negócio | `Icon`, `Spinner`, `StatusBadge`, `VerdictBadge`, `RunTime`, `EmptyState`, `SkipLink`, `Markdown` |
+| **molecules** | `components/molecules/` | poucos átomos com um propósito | `CardComposer`, `AddCardTrigger`, `CardMeta`, `CardActions`, `ChatMessage`, `ChatComposer`, `ColumnHeader`, `ErrorBanner`, `ProjectRow`, `RunEntry`, `WorkspaceField`, `ConnectionStatus` |
 | **organisms** | `components/organisms/` | um bloco inteiro da tela, com estado local se precisar | `BoardHeader`, `BoardColumn`, `KanbanCard`, `CardDrawer`, `ChatThread`, `RunHistory`, `ProjectsDialog`, `DirPicker` |
 | **templates** | `components/templates/` | só o esqueleto, recebe tudo por slot | `BoardTemplate` |
 | **pages** | `app/page.tsx` | estado, dados e handlers | `BoardPage` |

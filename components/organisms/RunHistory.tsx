@@ -1,75 +1,63 @@
-"use client";
-
-import { useState } from "react";
-import Markdown from "@/components/atoms/Markdown";
-import VerdictBadge from "@/components/atoms/VerdictBadge";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import type { Column, RunEntry } from "@/lib/config";
+import { diaDaExecucao, rotuloDoDia } from "@/components/atoms/RunTime";
+import RunEntry from "@/components/molecules/RunEntry";
+import type { Column, RunEntry as Execucao } from "@/lib/config";
 import { parseVerdict } from "@/lib/verdict";
 
-function Execucao({
-  execucao,
-  ehColunaDeVeredito,
-  aberta,
-}: {
-  execucao: RunEntry;
-  ehColunaDeVeredito: boolean;
-  aberta: boolean;
-}) {
-  const [open, setOpen] = useState(aberta);
-  const verdict = ehColunaDeVeredito ? parseVerdict(execucao.output) : null;
-
-  return (
-    <Collapsible
-      open={open}
-      onOpenChange={setOpen}
-      className="bg-surface-2 my-3 overflow-hidden rounded-md border"
-    >
-      <CollapsibleTrigger className="hover:bg-surface-3 flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] transition-colors">
-        <b>{execucao.column}</b>
-        {verdict && <VerdictBadge verdict={verdict} />}
-        <span className="text-muted-foreground ml-auto text-[11px]">
-          {execucao.tool ? `${execucao.tool} · ` : ""}
-          {execucao.ok ? "ok" : "erro"} · {execucao.at}
-        </span>
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="bg-background mx-3 mb-3 max-h-100 overflow-auto rounded-sm p-3 text-xs">
-          <Markdown content={execucao.output} />
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
-}
-
+// Histórico é linha do tempo: do mais recente pro mais antigo, com separador
+// quando vira o dia — sem isso duas execuções às 16:45 de dias diferentes ficam
+// indistinguíveis.
 export default function RunHistory({
   history,
   columns,
 }: {
-  history: RunEntry[];
+  history: Execucao[];
   columns: Column[];
 }) {
+  const nomeDaColuna = (id: string) => columns.find((coluna) => coluna.id === id)?.name ?? id;
+  const ehDeVeredito = (id: string) => columns.find((coluna) => coluna.id === id)?.verdict ?? false;
+
+  const doMaisRecente = history.slice().reverse();
+
   return (
-    <>
-      <h4 className="text-muted-foreground mt-6 mb-2 text-[13px]">
-        Histórico do agente ({history.length})
+    <section className="mt-6">
+      <h4 className="text-muted-foreground mb-3 text-[13px] font-medium">
+        Histórico do agente
+        {history.length > 0 && (
+          <span className="text-faint ml-2 tabular-nums">
+            {history.length} {history.length === 1 ? "execução" : "execuções"}
+          </span>
+        )}
       </h4>
+
       {history.length === 0 && (
-        <p className="text-muted-foreground text-xs">Nenhuma execução ainda.</p>
+        <p className="text-faint rounded-md border border-dashed px-3 py-4 text-center text-xs">
+          Nenhuma execução ainda.
+        </p>
       )}
-      {history
-        .slice()
-        .reverse()
-        .map((execucao, indice) => (
-          <Execucao
-            key={indice}
-            execucao={execucao}
-            ehColunaDeVeredito={
-              columns.find((coluna) => coluna.id === execucao.column)?.verdict ?? false
-            }
-            aberta={indice === 0}
-          />
-        ))}
-    </>
+
+      {doMaisRecente.map((execucao, indice) => {
+        const anterior = doMaisRecente[indice - 1];
+        const trocouDeDia = !anterior || diaDaExecucao(anterior.at) !== diaDaExecucao(execucao.at);
+
+        return (
+          <div key={`${execucao.at}-${indice}`}>
+            {trocouDeDia && (
+              <p className="text-faint mt-3 mb-1 pl-6 text-[11px] tracking-[0.06em] uppercase first:mt-0">
+                {rotuloDoDia(execucao.at)}
+              </p>
+            )}
+            <RunEntry
+              execucao={execucao}
+              nomeDaColuna={nomeDaColuna(execucao.column)}
+              verdict={ehDeVeredito(execucao.column) ? parseVerdict(execucao.output) : null}
+              mostrarFerramenta={execucao.tool !== anterior?.tool}
+              primeira={indice === 0}
+              ultima={indice === doMaisRecente.length - 1}
+              aberta={indice === 0}
+            />
+          </div>
+        );
+      })}
+    </section>
   );
 }
