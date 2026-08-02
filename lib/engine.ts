@@ -13,7 +13,6 @@ import {
   createCard as storeCreateCard,
   updateCard as storeUpdateCard,
   deleteCard as storeDeleteCard,
-  type CardRow,
 } from "./store";
 import { buildPrompt, buildChatPrompt, runTool, killTree, ensureWorkspaceDir } from "./runner";
 import { MAX_REVIEW_CYCLES, type Card, type Column, type Project } from "./config";
@@ -444,7 +443,7 @@ export function createCard(input: { title: string; description?: string; project
 }
 
 export type ResultadoDeEdicao =
-  | { situacao: "editado"; card: CardRow }
+  | { situacao: "editado"; card: Card }
   | { situacao: "card-inexistente" }
   | { situacao: "agente-ocupado" };
 
