@@ -21,6 +21,10 @@ export interface ChatPrompt {
   opening?: string;
   // what to do after reading the transcript, in every later turn
   continuation: string;
+  // how the agent's own turns are labelled in the transcript. "You" only fits a
+  // column that owns the whole thread; the default neutral label is what a
+  // column reading turns written in *other* columns needs.
+  agentLabel?: string;
 }
 
 export interface Column {
@@ -144,6 +148,8 @@ export const COLUMNS: Column[] = [
         "Explore the workspace first as instructed above, then open the conversation: give a brief, code-grounded read of the idea and your first questions.",
       continuation:
         "Respond to the user's latest message. Ask further questions if gaps remain, or — if the requirements now look complete — summarize the finalized requirements and acceptance criteria and say they're ready for development.",
+      // O refinamento é a primeira coluna do thread: tudo que está lá é turno seu.
+      agentLabel: "You",
     },
   },
   {
@@ -186,19 +192,23 @@ export const COLUMNS: Column[] = [
     onReject: "development",
     worktree: true,
     persona: "a senior engineer walking a human reviewer through the change already on this card's branch",
-    instruction:
-      "The change is implemented and pushed: read the diff of the branch against the base (both named in the Git isolation section) plus anything still uncommitted, and answer what the human asks about it. Cite the concrete files and lines you read on the branch, never the base version. Do NOT write, edit or commit code — this column reviews, it does not implement.\n" +
-      "If there is no Git isolation section, this card never went through Development: say there is no branch to review instead of guessing what changed.\n" +
-      "When — and only when — the human asked for a change and that request is settled and unambiguous, write the request as the developer agent must receive it (what to change, in which files, and why), and close the turn with a final line that is exactly `VERDICT: CHANGES_REQUESTED`. That line sends the card back to Development, so never write it while anything is still being discussed, and never write it just to acknowledge a question.",
+    // Sem run one-shot: aqui quem fala primeiro é o humano, então todo o trabalho
+    // da coluna é descrito no chatPrompt, que se repete a cada turno.
+    instruction: "",
     chatPrompt: {
       briefing:
         "You are answering a human who is reviewing this card's change before approving it. " +
+        "The change is implemented and pushed: read the diff of the branch against the base (both named in the Git isolation section) plus anything still uncommitted, and ground every answer in it — cite the concrete files and lines you read on the branch, never the base version. " +
+        "If there is no Git isolation section, this card never went through Development: say there is no branch to review instead of guessing what changed.\n" +
+        "Do NOT write, edit or commit code — this column reviews, it does not implement. " +
         "Keep replies short and concrete — they are reading a diff, not a report. " +
         "Answering a question is a complete turn: the card only leaves this column when the human's change request is settled. " +
         "Approving is the human's move, never yours.",
       continuation:
-        "Respond to the human's latest message. If it is a question, answer it and stop. " +
-        "If it is a change request, make sure you understand exactly what must change — ask when it is vague — and only then write the request for the developer agent and close the turn with the verdict line.",
+        "Earlier turns in the transcript may have been written by agents of other columns of this board, not by you — only the human's latest message is the request you are answering now. " +
+        "If it is a question, answer it and stop. " +
+        "If it is a change request, make sure you understand exactly what must change — ask when it is vague — and only then write the request as the developer agent must receive it (what to change, in which files, and why), and close the turn with a final line that is exactly `VERDICT: CHANGES_REQUESTED`. " +
+        "That line sends the card back to Development, so never write it while anything is still being discussed, and never write it just to acknowledge a question.",
     },
   },
   {

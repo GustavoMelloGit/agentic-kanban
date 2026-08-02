@@ -79,13 +79,22 @@ export function buildChatPrompt(
   parts.push(`Project: ${project.name}`);
   if (worktree) parts.push(gitIsolationSection(worktree));
   parts.push(`\n## Card\n**${card.title}**\n${card.description || "(no description)"}`);
-  parts.push(`\n## Task\n${column.instruction}`);
 
   const conversa = semMarcadoresDeCancelamento(card.messages);
   if (conversa.length === 0) {
-    if (column.chatPrompt?.opening) parts.push(`\n${column.chatPrompt.opening}`);
+    // A `instruction` é o turno de abertura, não protocolo de todo turno: repetir
+    // ela no meio da conversa briga com a `continuation`.
+    const abertura = [
+      column.instruction && `## Task\n${column.instruction}`,
+      column.chatPrompt?.opening,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    if (abertura) parts.push(`\n${abertura}`);
   } else {
-    const transcript = formatTranscript(conversa, { rotuloDoAgente: "You" });
+    const transcript = formatTranscript(conversa, {
+      rotuloDoAgente: column.chatPrompt?.agentLabel,
+    });
     parts.push(`\n## Conversation so far\n${transcript}`);
     const agora = [CHAT_TURN_PREAMBLE, column.chatPrompt?.continuation].filter(Boolean).join(" ");
     parts.push(`\n## Now\n${agora}`);
