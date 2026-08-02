@@ -100,6 +100,14 @@
   --ease-board: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* O message-scroller do shadcn conta com esta utility, que o Tailwind não gera
+   (as scrollbar-* e inset-s-* ele já traz). São 20px de desvanecimento na borda
+   de baixo do transcript, sinalizando que a conversa continua — o conteúdo tem
+   pb-5 pra que, no fim da lista, o que desbota seja o respiro e não a mensagem. */
+@utility scroll-fade-b {
+  mask-image: linear-gradient(to bottom, black calc(100% - 20px), transparent 100%);
+}
+
 @layer base {
   * {
     @apply border-border;

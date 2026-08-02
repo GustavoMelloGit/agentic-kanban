@@ -27,7 +27,7 @@ export default function ChatComposer({
 
   return (
     <form
-      className="bg-surface sticky bottom-0 flex gap-2 pt-2"
+      className="flex shrink-0 gap-2 border-t pt-3"
       onSubmit={(evento) => {
         evento.preventDefault();
         onSubmit();

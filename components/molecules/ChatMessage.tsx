@@ -1,6 +1,7 @@
 import Markdown from "@/components/atoms/Markdown";
+import { Bubble, BubbleContent } from "@/components/ui/bubble";
+import { Message, MessageContent, MessageHeader } from "@/components/ui/message";
 import type { ChatMessage as Mensagem } from "@/lib/config";
-import { cn } from "@/lib/ui/utils";
 
 const ROTULO = { user: "Você", agent: "Agente" } as const;
 
@@ -10,20 +11,19 @@ export default function ChatMessage({ message }: { message: Mensagem }) {
   const doUsuario = message.role === "user";
 
   return (
-    <div className={cn("flex max-w-[90%] flex-col gap-[3px]", doUsuario && "items-end self-end")}>
-      <span className="text-faint text-[11px] tracking-[0.06em] uppercase">
-        {ROTULO[message.role]}
-      </span>
-      <div
-        className={cn(
-          "rounded-md border px-3 py-2 wrap-break-word whitespace-pre-wrap",
-          doUsuario
-            ? "bg-primary border-primary text-primary-foreground"
-            : "bg-surface-2 border-border"
-        )}
-      >
-        {doUsuario ? message.content : <Markdown content={message.content} />}
-      </div>
-    </div>
+    <Message align={doUsuario ? "end" : "start"}>
+      <MessageContent>
+        <MessageHeader className="text-faint text-[11px] tracking-[0.06em] uppercase">
+          {ROTULO[message.role]}
+        </MessageHeader>
+        <Bubble variant={doUsuario ? "default" : "outline"}>
+          <BubbleContent
+            className={doUsuario ? "whitespace-pre-wrap" : "bg-surface-2 border-border"}
+          >
+            {doUsuario ? message.content : <Markdown content={message.content} />}
+          </BubbleContent>
+        </Bubble>
+      </MessageContent>
+    </Message>
   );
 }

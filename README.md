@@ -134,7 +134,7 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 
 | Camada | Onde | O que é | Exemplos |
 |---|---|---|---|
-| **ui** | `components/ui/` | primitivas do shadcn, geradas pela CLI — não editar à mão sem motivo | `button`, `dialog`, `select`, `collapsible` |
+| **ui** | `components/ui/` | primitivas do shadcn, geradas pela CLI — não editar à mão sem motivo | `button`, `dialog`, `select`, `collapsible`, `message`, `message-scroller`, `bubble` |
 | **atoms** | `components/atoms/` | um elemento, sem regra de negócio | `Icon`, `Spinner`, `StatusBadge`, `VerdictBadge`, `RunTime`, `EmptyState`, `SkipLink`, `Markdown` |
 | **molecules** | `components/molecules/` | poucos átomos com um propósito | `CardComposer`, `AddCardTrigger`, `CardMeta`, `CardActions`, `ChatMessage`, `ChatComposer`, `ColumnHeader`, `ErrorBanner`, `ProjectRow`, `RunEntry`, `WorkspaceField`, `ConnectionStatus` |
 | **organisms** | `components/organisms/` | um bloco inteiro da tela, com estado local se precisar | `BoardHeader`, `BoardColumn`, `KanbanCard`, `CardDrawer`, `ChatThread`, `RunHistory`, `ProjectsDialog`, `DirPicker` |
@@ -182,6 +182,12 @@ run one-shot. Ao chegar o card, o agente abre a conversa; suas respostas
 (`POST /api/cards/:id/message`) disparam novos turnos. A transcrição inteira é
 reenviada a cada turno, então funciona com qualquer CLI (sem `--resume` nativo).
 As mensagens ficam na tabela `messages` e a UI mostra o thread no drawer.
+
+A thread usa o `message-scroller` do shadcn: o transcript é a região que rola
+(o drawer em si não rola em coluna de chat), gruda no fim enquanto você está no
+fim e solta assim que você rola pra cima, com um botão flutuante pra voltar à
+mensagem mais recente. Cada mensagem é um `Message` + `Bubble`; só a resposta do
+agente passa por markdown.
 
 A conversa segue com o card: ao entrar numa coluna de execução, a transcrição vai
 no prompt como `## Requirements discussion (Enrichment)` — é assim que o
