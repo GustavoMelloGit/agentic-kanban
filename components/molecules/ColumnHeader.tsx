@@ -23,13 +23,26 @@ const REGRA_DO_TIPO: Record<Column["type"], string> = {
   manual: "Não roda agente. O card só entra e sai daqui por arrasto.",
 };
 
+// `manual` diz "não roda agente", o que deixa de valer quando a coluna tem chat:
+// ali o agente roda a cada mensagem, só não é ele quem começa.
+const REGRA_DA_CONVERSA_MANUAL = "Não dispara agente na chegada: quem começa a conversa é você.";
+
+function semAgenteNenhum(col: Column): boolean {
+  return col.type === "manual" && !col.chat;
+}
+
+function regraDoTipo(col: Column): string {
+  if (col.type === "manual" && col.chat) return REGRA_DA_CONVERSA_MANUAL;
+  return REGRA_DO_TIPO[col.type];
+}
+
 // A etiqueta da coluna mostra só o tipo; tudo que explica o comportamento vai
 // pro tooltip, senão o cabeçalho vira um parágrafo e some a hierarquia.
 function detalhesDaColuna(col: Column, colunas: Column[]): string[] {
   const nomeDe = (id: string | null | undefined) =>
     colunas.find((coluna) => coluna.id === id)?.name ?? id ?? "—";
 
-  const linhas = [REGRA_DO_TIPO[col.type]];
+  const linhas = [regraDoTipo(col)];
 
   if (col.chat) linhas.push("Segura uma conversa em vez de uma execução única.");
   if (col.onComplete) linhas.push(`Ao terminar, vai para ${nomeDe(col.onComplete)}.`);
@@ -73,7 +86,7 @@ export default function ColumnHeader({ col, columns }: { col: Column; columns: C
           <TooltipTrigger
             className={cn(
               "rounded-sm text-[11px] font-normal underline decoration-dotted underline-offset-2",
-              col.type === "manual" ? "text-faint" : "text-brand-text"
+              semAgenteNenhum(col) ? "text-faint" : "text-brand-text"
             )}
           >
             {col.type}
