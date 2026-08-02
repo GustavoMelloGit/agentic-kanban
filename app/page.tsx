@@ -308,7 +308,7 @@ export default function BoardPage() {
                       </button>
                     </div>
                   )}
-                  {col.chat && card.messages.length > 0 && (
+                  {card.messages.length > 0 && (
                     <div className="meta">
                       <span className="badge">💬 {card.messages.length}</span>
                     </div>
