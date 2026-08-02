@@ -97,7 +97,8 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 - `lib/projects.ts` — validação do CRUD de projetos (nome, tool, workspace)
 - `lib/store.ts` — queries/mutations tipadas + `getBoard()`; emite mudança no bus
 - `lib/bus.ts` — event bus in-process que alimenta o SSE
-- `lib/runner.ts` — monta o prompt e faz `spawn` da CLI no workspace
+- `lib/runner.ts` — monta o prompt e faz `spawn` da CLI no workspace (ou na worktree do card)
+- `lib/worktree.ts` — cria/reaproveita/remove a git worktree e a branch de cada card
 - `lib/transcript.ts` — formata a transcrição do chat pro prompt, com teto rígido de
   caracteres (o marcador de corte sai do próprio orçamento)
 - `lib/texto.ts` — normaliza texto vindo do corpo da requisição (`textoNaoVazio`)
@@ -111,6 +112,30 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 - `app/ProjectsPanel.tsx` — modal de CRUD de projetos (botão "Projetos" no header)
 - `app/DirPicker.tsx` — seletor de pasta do workspace
 - `lib/fsbrowse.ts` — listagem/criação de diretórios com limite em `$HOME` + raiz do app
+
+## Isolamento por card (worktree + branch + PR)
+
+Colunas com `worktree: true` (Development e AI Review) **não** rodam o agente no
+workspace do projeto: o motor cria uma git worktree por card antes do spawn e usa
+ela como `cwd`. Dois cards em Development ao mesmo tempo não se enxergam.
+
+- **Onde**: `.claude/worktrees/<card-id>/`, dentro do repositório do workspace.
+  Fica no `.gitignore` daqui e no `.git/info/exclude` de qualquer repo apontado.
+- **Branch**: `<card-id>/<slug-do-titulo>`, criada a partir da branch padrão do
+  repositório (`origin/HEAD`, senão `main`/`master`).
+- **Reaproveitada** quando o AI Review devolve o card pra Development — mesma
+  worktree, mesma branch, os commits do ciclo anterior continuam lá.
+- **Removida** quando o card chega em `Done` (`dropWorktree: true`) ou é excluído.
+  A branch só é apagada se estiver mergeada — trabalho não integrado sobrevive.
+- Workspace que não é repositório git não tem isolamento possível: o agente roda
+  no próprio workspace e o motor loga o aviso. Se o repo existe mas a worktree
+  falha, o run falha — nunca cai de volta no checkout principal.
+
+O agente não mexe em worktree nem em branch: ele commita, dá push e abre a PR
+pra branch base com `gh pr create` (instrução da coluna Development, em
+`lib/config.ts`). O corpo da PR é curto por regra — no máximo cinco linhas, só as
+decisões que levaram à solução. Detalhes em
+`.claude/rules/card-worktree-workflow.md`.
 
 ## Colunas de chat
 
@@ -130,6 +155,5 @@ dos requisitos.
 ## Próximos passos
 
 - **UI de gestão de projetos/empresas**: hoje projetos são seed no código.
-- **Isolamento por card**: git worktree/branch por card ao editar código.
 - **Sessão nativa de chat** (`claude --resume`): otimização sobre o replay de transcrição.
 - **Regras** (WIP limit, dependências entre cards, aprovação humana).

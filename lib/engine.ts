@@ -13,11 +13,12 @@ import {
   createCard as storeCreateCard,
   deleteCard as storeDeleteCard,
 } from "./store";
-import { buildPrompt, buildChatPrompt, runTool, killTree } from "./runner";
-import { MAX_REVIEW_CYCLES, type Card, type Column } from "./config";
+import { buildPrompt, buildChatPrompt, runTool, killTree, ensureWorkspaceDir } from "./runner";
+import { MAX_REVIEW_CYCLES, type Card, type Column, type Project } from "./config";
 import { parseVerdict } from "./verdict";
 import { logErro } from "./log";
 import { textoNaoVazio } from "./texto";
+import { prepararWorktree, removerWorktree, type Worktree } from "./worktree";
 
 // In-process state (single-process dev prototype).
 const running = new Set<string>();
@@ -49,6 +50,20 @@ function agenteOcupado(id: string): boolean {
   return running.has(id) || jobs.has(id);
 }
 
+// Worktree órfã atrapalha o próximo card, mas derrubar a movimentação por causa
+// dela atrapalha mais — por isso a limpeza só loga e segue.
+async function limparWorktree(id: string, project: Project | undefined) {
+  if (!project) {
+    logErro("limpeza de worktree", `card ${id} sem projeto; worktree pode ter ficado órfã`);
+    return;
+  }
+  try {
+    await removerWorktree({ workspace: ensureWorkspaceDir(project.workspace), cardId: id });
+  } catch (erro) {
+    logErro(`limpeza da worktree do card ${id}`, erro);
+  }
+}
+
 function startAgent(id: string, columnId: string) {
   register(id, runCard(id, columnId));
 }
@@ -72,6 +87,10 @@ export async function moveCard(id: string, toColumnId: string, opts: { chained?:
   if (!opts.chained && card && card.reviewCycles > 0) setReviewCycles(id, 0);
 
   setCardColumn(id, toColumnId);
+
+  if (col.dropWorktree && card) {
+    await limparWorktree(id, getProject(card.projectId));
+  }
 
   // autonomous + automated columns run an agent on arrival
   if (col.type === "autonomous" || col.type === "automated") {
@@ -187,6 +206,32 @@ export async function runCard(id: string, columnId?: string) {
 
     setCardStatus(id, "running");
 
+    let worktree: Worktree | null = null;
+    if (col.worktree) {
+      const workspace = ensureWorkspaceDir(project.workspace);
+      try {
+        worktree = await prepararWorktree({ workspace, cardId: id, titulo: cardRow.title });
+      } catch (erro) {
+        logErro(`worktree do card ${id}`, erro);
+        setCardStatus(id, "error");
+        addRun({
+          cardId: id,
+          column: col.id,
+          tool: project.tool,
+          ok: false,
+          output: `⚠ Não foi possível preparar a worktree do card: ${erro instanceof Error ? erro.message : String(erro)}`,
+          at: nowStamp(),
+        });
+        return;
+      }
+      if (!worktree) {
+        logErro(
+          `worktree do card ${id}`,
+          `workspace "${project.workspace}" não é um repositório git; o agente vai rodar direto no workspace, sem isolamento`
+        );
+      }
+    }
+
     const cardDoBoard = board.cards.find((card) => card.id === id);
     const cardForPrompt: Pick<Card, "title" | "description" | "history" | "messages"> = {
       title: cardRow.title,
@@ -194,12 +239,13 @@ export async function runCard(id: string, columnId?: string) {
       history: cardDoBoard?.history ?? [],
       messages: cardDoBoard?.messages ?? [],
     };
-    const prompt = buildPrompt(col, cardForPrompt, project);
+    const prompt = buildPrompt(col, cardForPrompt, project, worktree ?? undefined);
 
     const result = await runTool({
       tool,
       project,
       prompt,
+      cwd: worktree?.caminho,
       onSpawn: (child) => {
         children.set(id, child);
         if (cancelled.has(id)) killTree(child); // cancel arrived before spawn
@@ -352,5 +398,9 @@ export function createCard(input: { title: string; description?: string; project
 // status/run for a card that no longer exists.
 export async function deleteCard(id: string): Promise<boolean> {
   await cancelCard(id);
+
+  const cardRow = getCardRow(id);
+  if (cardRow) await limparWorktree(id, getProject(cardRow.projectId));
+
   return storeDeleteCard(id);
 }

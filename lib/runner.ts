@@ -4,6 +4,7 @@ import fs from "node:fs";
 import type { Column, Project, Tool, RunEntry, ChatMessage } from "./config";
 import { logErro } from "./log";
 import { formatTranscript } from "./transcript";
+import type { Worktree } from "./worktree";
 
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 min safety cap per run
 
@@ -15,14 +16,27 @@ const WORKSPACE_EXPLORATION_DIRECTIVE =
   "Read the README and any documentation, the dependency manifest (package.json or its equivalent), the folder structure, and the modules relevant to what this card asks for. " +
   "Ground your restatement and every question in what you actually find in the code — the real stack, conventions, current state, and concrete files — never in generic assumptions.";
 
+function gitIsolationSection(worktree: Worktree): string {
+  return (
+    `\n## Git isolation\n` +
+    `Your cwd is a git worktree created for this card alone, already checked out on branch \`${worktree.branch}\`, based on \`${worktree.base}\`. ` +
+    `It exists so cards worked in parallel never collide in the same files.\n` +
+    `- Stay in this worktree: never switch branches, never edit files outside it, never touch the main checkout.\n` +
+    `- The worktree and the branch are managed by the board — do not create or delete either.\n` +
+    `- Commit as you go, in Portuguese conventional commits (\`tipo(escopo): descrição\`), one short phrase per commit.`
+  );
+}
+
 export function buildPrompt(
   column: Column,
   card: { title: string; description: string; history: RunEntry[]; messages: ChatMessage[] },
-  project: Project
+  project: Project,
+  worktree?: Worktree
 ): string {
   const parts: string[] = [];
   if (column.persona) parts.push(`You are ${column.persona}.`);
   parts.push(`Project: ${project.name}`);
+  if (worktree) parts.push(gitIsolationSection(worktree));
   parts.push(`\n## Card: ${card.title}\n${card.description || "(no description)"}`);
   if (card.messages.length) {
     parts.push(
@@ -113,16 +127,18 @@ export interface RunResult {
   output: string;
 }
 
-// Spawn the project's tool headless in its workspace. onSpawn(child) lets the
-// caller track/kill it. Resolves with the captured output.
+// Spawn the project's tool headless in its workspace — or in `cwd`, when the
+// column gave the card a worktree of its own. onSpawn(child) lets the caller
+// track/kill it. Resolves with the captured output.
 export function runTool(opts: {
   tool: Tool;
   project: Project;
   prompt: string;
+  cwd?: string;
   onSpawn?: (child: ChildProcess) => void;
 }): Promise<RunResult> {
   return new Promise((resolve) => {
-    const cwd = resolveWorkspace(opts.project);
+    const cwd = opts.cwd ?? resolveWorkspace(opts.project);
     const args = opts.tool.args.map((argumento) => argumento.replace("{{prompt}}", opts.prompt));
 
     const child = spawn(opts.tool.command, args, {

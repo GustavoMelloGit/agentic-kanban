@@ -29,6 +29,11 @@ export interface Column {
   // On CHANGES_REQUESTED the card goes to onReject instead of onComplete.
   verdict?: boolean;
   onReject?: string | null;
+  // worktree columns run their agent inside the card's own git worktree and
+  // branch, created by the engine before the spawn (see lib/worktree.ts).
+  worktree?: boolean;
+  // arriving here means the card's work is over: the worktree is removed.
+  dropWorktree?: boolean;
 }
 
 export interface Project {
@@ -108,9 +113,13 @@ export const COLUMNS: Column[] = [
     name: "Development",
     type: "autonomous",
     onComplete: "ai-review",
+    worktree: true,
     persona: "a senior software engineer",
     instruction:
-      "Implement this card in the current workspace. Make the necessary code changes directly. Keep the change focused and consistent with the surrounding code. When done, output a short summary of what you changed and any follow-ups.",
+      "Implement this card in the current workspace. Make the necessary code changes directly. Keep the change focused and consistent with the surrounding code.\n" +
+      "When the implementation is done: commit everything, push the branch with `git push -u origin <branch>`, and open a pull request to the base branch with `gh pr create` — if a PR is already open for this branch, pushing is enough, but update its body if the decisions changed. If `gh` is unavailable or unauthenticated, push the branch anyway and say so in your output.\n" +
+      "The PR body is at most FIVE one-line bullets, and covers ONLY the decisions that led to this solution — the trade-offs a reviewer could not guess from the diff. No file-by-file changelog, no test plan, no restated card text, no generated footer. A long body is a bad body: it will not be read.\n" +
+      "Finally, output a short summary of what you changed, the PR URL, and any follow-ups.",
   },
   {
     id: "ai-review",
@@ -119,14 +128,23 @@ export const COLUMNS: Column[] = [
     onComplete: "human-review",
     verdict: true,
     onReject: "development",
+    worktree: true,
     persona: "a meticulous code reviewer",
     instruction:
-      "Review the most recent changes in this workspace (use git to inspect the diff). Check correctness, edge cases, and consistency.\n" +
+      "Review this card's changes: the diff of its branch against the base branch (both named in the Git isolation section) plus anything still uncommitted. Check correctness, edge cases, and consistency.\n" +
       "The FIRST line of your output must be exactly `VERDICT: APPROVE` or `VERDICT: CHANGES_REQUESTED` (nothing else on that line). " +
       "Then a concise bullet list of findings. On CHANGES_REQUESTED, each bullet must be actionable — the developer agent gets this text as its only feedback.",
   },
   { id: "human-review", name: "Human Review", type: "manual", onComplete: null, persona: "", instruction: "" },
-  { id: "done", name: "Done", type: "manual", onComplete: null, persona: "", instruction: "" },
+  {
+    id: "done",
+    name: "Done",
+    type: "manual",
+    onComplete: null,
+    dropWorktree: true,
+    persona: "",
+    instruction: "",
+  },
 ];
 
 // Quantas devoluções uma coluna de veredito pode fazer antes de desistir e

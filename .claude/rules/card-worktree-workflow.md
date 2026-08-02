@@ -2,52 +2,44 @@
 
 ## When to apply
 
-Whenever a card enters a column where an agent writes code (Development and any
-column it bounces back to). Applies to every card individually — never batch two
-cards into the same worktree or branch.
+Whenever an agent works a card in a column that edits or reviews code
+(Development and AI Review). Applies to every card individually — two cards
+never share a worktree or a branch.
 
 ## How to apply
 
-### 1. Create the worktree before touching any code
+### The board owns the worktree; the agent owns the commits
 
-The main checkout is never edited by a card agent. First action of the run:
+`lib/worktree.ts` creates the worktree **before the agent is spawned** and the
+run's cwd is already inside it:
 
-```bash
-git worktree add worktrees/<card-id> -b <card-id>/<slug-do-titulo> main
-```
+- Path: `.claude/worktrees/<card-id>/` — gitignored here, and added to
+  `.git/info/exclude` of whatever repository the project's workspace points at.
+- Branch: `<card-id>/<slug-do-titulo>`, based on the repository's default branch.
+- Reused when the card bounces back from review, removed when the card reaches
+  **Done** or is deleted.
 
-- `<card-id>` — the card's id (e.g. `card-451298-298`), stable across runs.
-- `<slug-do-titulo>` — short kebab-case slug of the card title, not the whole title.
-- Base is always `main`.
-- `worktrees/` is gitignored, so the main checkout stays clean.
+So the agent must **not** run `git worktree add/remove`, `git switch`,
+`git checkout <branch>`, or create/delete the branch. If a run needs a worktree
+that could not be created, the run fails — it never falls back to editing the
+main checkout.
 
-If the worktree already exists (the card bounced back from review), reuse it —
-`git worktree list` first, and only create it when absent.
+### What the agent does
 
-### 2. Work only inside the worktree
-
-Every read, edit, build, and test for the card runs with the worktree as cwd.
-Commits follow [git-conventions](git-conventions.md) — conventional commits in
-Portuguese, scope = the touched component.
-
-### 3. Open the PR when the card is ready for human review
-
-Before the card leaves the agent's hands:
+1. Work only inside the cwd. Never edit files outside it.
+2. Commit as you go, following [git-conventions](git-conventions.md) —
+   conventional commits in Portuguese, scope = the touched component, one short
+   phrase each.
+3. When the implementation is done, push and open the PR against the base branch:
 
 ```bash
-git push -u origin <card-id>/<slug-do-titulo>
-gh pr create --base main --title "<Descrição curta em português>" --body "..."
+git push -u origin <branch>
+gh pr create --base <base> --title "<Descrição curta em português>" --body "..."
 ```
 
-### 4. Remove the worktree after the merge
-
-```bash
-git worktree remove worktrees/<card-id>
-git branch -d <card-id>/<slug-do-titulo>
-```
-
-Leaving a merged worktree behind means the next card that touches the same files
-starts from stale state.
+If a PR is already open for the branch, pushing is enough — but update the body
+when the decisions changed. If `gh` is missing or unauthenticated, push anyway
+and say so in the run output.
 
 ## PR description — short and direct
 
@@ -84,9 +76,11 @@ I ran `tsc --noEmit` and `next build`, both clean, and verified in headless...
 
 ## Why
 
-A worktree per card isolates parallel agents from each other: two cards can be in
-Development at the same time without one's half-finished edits leaking into the
-other's diff or review. The branch and PR give the human reviewer a real diff to
-approve or reject, instead of changes already sitting on `main` where rejecting
-means a revert. Short PR descriptions get read; long ones get skipped, which
-makes the review step worthless.
+A worktree per card isolates parallel agents: two cards can sit in Development at
+the same time without one's half-finished edits leaking into the other's diff or
+review. The branch and PR give the human reviewer a real diff to approve or
+reject, instead of changes already sitting on the default branch where rejecting
+means a revert. Creating it in the engine rather than by prompt makes it a
+guarantee — an agent that forgets an instruction cannot end up editing the main
+checkout. Short PR descriptions get read; long ones get skipped, which makes the
+review step worthless.
