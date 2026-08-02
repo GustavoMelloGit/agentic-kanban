@@ -199,7 +199,10 @@ table.projects .row-actions button { font-size: 11px; padding: 4px 8px; white-sp
 /* o .msg-body é pre-wrap pra mensagem do usuário; no markdown o espaçamento
    quem dá é o próprio bloco, senão sobra linha em branco entre parágrafos */
 .markdown { white-space: normal; }
-.markdown p, .markdown ul, .markdown ol, .markdown pre, .markdown blockquote, .markdown table {
+/* o wrapper da tabela entra aqui e não numa regra própria: uma regra
+   .markdown .table-scroll ganharia do .markdown > :last-child e deixaria margem
+   sobrando quando a tabela fecha a mensagem */
+.markdown p, .markdown ul, .markdown ol, .markdown pre, .markdown blockquote, .markdown .table-scroll {
   margin: 0 0 8px;
 }
 .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 {
@@ -230,26 +233,32 @@ table.projects .row-actions button { font-size: 11px; padding: 4px 8px; white-sp
   padding: 8px 10px; max-height: 320px; overflow: auto;
   white-space: pre; word-break: normal; font-size: 12px;
 }
-.markdown pre code { background: none; border: 0; padding: 0; }
-/* display:block no lugar de table pra tabela larga rolar dentro da bolha em vez
-   de esticar o drawer; width max-content deixa a tabela pequena no tamanho dela */
+.markdown pre code { background: none; border: 0; padding: 0; word-break: normal; overflow-wrap: normal; }
+/* o scroll fica no wrapper pra tabela larga rolar dentro da bolha em vez de
+   esticar o drawer; width max-content deixa a tabela pequena no tamanho dela */
+.markdown .table-scroll { max-width: 100%; overflow-x: auto; }
 .markdown table {
-  display: block; width: max-content; max-width: 100%;
-  overflow-x: auto; border-collapse: collapse; font-size: 12px;
+  width: max-content; margin: 0;
+  border-collapse: collapse; font-size: 12px;
 }
 /* sem isso o break-word herdado do .msg-body derruba o min-content da coluna pra
-   um caractere: nada transborda, nada rola, e a coluna fica esmagada */
+   um caractere: nada transborda, nada rola, e a coluna fica esmagada. o
+   overflow-wrap acompanha porque break-word equivale a normal + anywhere na
+   spec, e só o word-break não desfaz o anywhere herdado */
 .markdown th, .markdown td {
   border: 1px solid var(--border); padding: 4px 8px; text-align: left;
-  word-break: normal;
+  word-break: normal; overflow-wrap: normal;
 }
 /* o break-word do .markdown code é mais específico que o da célula e ganha por
    herança: sem isso o caminho em crase quebra no meio em vez de rolar */
-.markdown th code, .markdown td code { word-break: normal; }
+.markdown th code, .markdown td code { word-break: normal; overflow-wrap: normal; }
 .markdown th {
   background: var(--panel); color: var(--muted); font-weight: 600;
   font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
 }
 .markdown blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--muted); }
+/* o :last-child do .markdown só alcança filho direto, então o último bloco da
+   citação ficaria com a margem de baixo sobrando dentro dela */
+.markdown blockquote > :last-child { margin-bottom: 0; }
 .markdown hr { border: 0; border-top: 1px solid var(--border); margin: 12px 0; }
 .markdown img { max-width: 100%; }

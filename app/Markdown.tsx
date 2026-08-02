@@ -13,6 +13,13 @@ const componentes: Components = {
       {children}
     </a>
   ),
+  // o scroll horizontal vai no wrapper pra tabela larga rolar dentro da bolha
+  // sem que a <table> precise virar display:block e perder o papel de tabela
+  table: ({ node, children, ...props }) => (
+    <div className="table-scroll">
+      <table {...props}>{children}</table>
+    </div>
+  ),
 };
 
 export default function Markdown({ content }: { content: string }) {
