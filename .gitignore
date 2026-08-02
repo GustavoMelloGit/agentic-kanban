@@ -5,3 +5,5 @@ tsconfig.tsbuildinfo
 # (workspaces/demo é um repo git próprio, sandbox do agente)
 data/board.db*
 workspaces/
+# uma worktree por card, criada pelo agente de desenvolvimento
+worktrees/
