@@ -103,6 +103,26 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
   `MAX_REVIEW_CYCLES` (3), o card para em Human Review com um aviso no histórico.
   Qualquer movimentação manual do card zera o contador.
 
+## Quando o agente falha
+
+Run que termina em erro deixa o card parado com o **status `error`** e a saída
+gravada no histórico — nada é apagado, e nada avança pra próxima coluna.
+
+- **Rodar de novo** aparece no mini-card e no detalhe do card (que é onde se lê o
+  erro), em toda coluna que tem agente — incluindo Enrichment, onde o disparo
+  refaz o último turno sem exigir uma mensagem nova.
+- Com agente vivo, a única ação é **Cancelar operação**: dois agentes nunca
+  atuam no mesmo card, e `POST /api/cards/:id/run` responde 409.
+- **Saída que falhou não vira contexto** (`lib/contexto.ts`): o disparo seguinte
+  recebe a última etapa aproveitável — o feedback do review, não o traceback.
+  No chat, a resposta que falhou fica visível na thread, marcada, e some do
+  prompt do turno novo.
+- O retry **não mexe em `reviewCycles`**: falha não gasta orçamento de review e
+  destravar o card não devolve os 3 ciclos (o que arrastar de volta faz).
+- Card marcado como `running` **sem agente vivo** (restart do servidor no meio do
+  run) aparece como falha e oferece o retry — não é preciso cancelar uma
+  execução que já morreu, e nada é gravado como cancelamento.
+
 ## Estrutura
 
 - `lib/config.ts` — tipos do domínio + tools, colunas e seed de projetos/cards
@@ -117,6 +137,11 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 - `lib/transcript.ts` — formata a transcrição do chat pro prompt, com teto rígido de
   caracteres (o marcador de corte sai do próprio orçamento)
 - `lib/texto.ts` — normaliza texto vindo do corpo da requisição (`textoNaoVazio`)
+- `lib/cancelamento.ts` — os marcadores de cancelamento e como reconhecê-los
+- `lib/contexto.ts` — o que entra no prompt como etapa anterior/conversa (fora:
+  marcador de cancelamento e saída de execução que falhou)
+- `lib/execucoes.ts` — quais cards têm agente vivo neste processo; é o que separa
+  "rodando" de "morreu com o servidor"
 - `lib/engine.ts` — mover card, disparar/cancelar agente, encadear colunas e
   rotear pelo veredito (`routeAfterRun`)
 - `app/api/*` — endpoints REST + `events` (SSE):
