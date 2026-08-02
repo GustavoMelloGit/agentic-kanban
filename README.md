@@ -25,6 +25,7 @@ Trocar de ferramenta = trocar um template de comando (`lib/config.ts` → `TOOLS
 - **TypeScript** em todo o código.
 - **SQLite via Drizzle ORM** (`data/board.db`) — projetos, cards e execuções.
 - **SSE** (`/api/events`) empurra o board pro front a cada mudança (sem polling).
+- **Tailwind v4 + shadcn/ui** no front, organizados em Atomic Design.
 
 ## Rodar
 
@@ -109,13 +110,25 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
   - cards: `POST /api/cards`, `DELETE /api/cards/:id`, `:id/move`, `:id/run`, `:id/message`
   - projetos: `GET|POST /api/projects`, `PATCH|DELETE /api/projects/:id`
   - pastas: `GET /api/fs?path=…` (listar), `POST /api/fs` (criar subpasta)
-- `app/page.tsx` — board (drag-and-drop, atualiza via `EventSource`)
-- `app/ProjectsPanel.tsx` — modal de CRUD de projetos (botão "Projetos" no header)
-- `app/DirPicker.tsx` — seletor de pasta do workspace
-- `app/ChatThread.tsx` — thread do chat; resposta do agente vai por `app/Markdown.tsx`
-- `app/Icon.tsx` — ícones SVG do board (nenhum emoji como ícone estrutural)
-- `app/globals.css` — tokens de cor/espaço/tipografia/movimento + estilos
-  (identidade documentada em `.claude/rules/design-system.md`)
+- `app/page.tsx` — a página: estado, SSE, handlers. Não desenha nada sozinha
+- `app/globals.css` — tokens (contrato do shadcn + extensões) e o CSS do markdown
+- `lib/ui/utils.ts` — `cn()`, o merge de classe Tailwind usado por tudo em `components/`
+
+## Front em Atomic Design
+
+`app/page.tsx` só guarda estado e chama a API; a árvore visual mora em
+`components/`, em camadas que só dependem pra baixo:
+
+| Camada | Onde | O que é | Exemplos |
+|---|---|---|---|
+| **ui** | `components/ui/` | primitivas do shadcn, geradas pela CLI — não editar à mão sem motivo | `button`, `dialog`, `select`, `collapsible` |
+| **atoms** | `components/atoms/` | um elemento, sem regra de negócio | `Icon`, `Spinner`, `StatusBadge`, `VerdictBadge`, `EmptyState`, `SkipLink`, `Markdown` |
+| **molecules** | `components/molecules/` | poucos átomos com um propósito | `CardMeta`, `CardActions`, `ChatMessage`, `ChatComposer`, `ColumnHeader`, `ErrorBanner`, `NewCardForm`, `ProjectRow`, `WorkspaceField`, `ConnectionStatus` |
+| **organisms** | `components/organisms/` | um bloco inteiro da tela, com estado local se precisar | `BoardHeader`, `BoardColumn`, `KanbanCard`, `CardDrawer`, `ChatThread`, `RunHistory`, `ProjectsDialog`, `DirPicker` |
+| **templates** | `components/templates/` | só o esqueleto, recebe tudo por slot | `BoardTemplate` |
+| **pages** | `app/page.tsx` | estado, dados e handlers | `BoardPage` |
+
+Identidade visual e mínimos de acessibilidade: `.claude/rules/design-system.md`.
 - `lib/fsbrowse.ts` — listagem/criação de diretórios com limite em `$HOME` + raiz do app
 
 ## Isolamento por card (worktree + branch + PR)

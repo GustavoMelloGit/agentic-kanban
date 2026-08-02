@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { Listing } from "../lib/fsbrowse";
-import { pedirJson } from "../lib/http";
-import Icon from "./Icon";
+import Icon from "@/components/atoms/Icon";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import type { Listing } from "@/lib/fsbrowse";
+import { pedirJson } from "@/lib/http";
 
 function urlDaListagem(caminho?: string): string {
   return `/api/fs${caminho ? `?path=${encodeURIComponent(caminho)}` : ""}`;
@@ -59,42 +62,60 @@ export default function DirPicker({
   }
 
   return (
-    <div className="dirpicker">
-      <div className="dp-head">
-        <b>Escolher workspace</b>
-        <code title={listagem?.path}>{listagem?.display ?? "…"}</code>
+    <div className="bg-background border-primary mt-2 mb-1 rounded-md border p-3">
+      <div className="flex items-baseline justify-between gap-2">
+        <b className="text-[13px]">Escolher workspace</b>
+        <code className="text-muted-foreground font-mono text-[11px] break-all">
+          {listagem?.display ?? "…"}
+        </code>
       </div>
 
       {erro && (
-        <p className="form-error" role="alert">
-          <Icon name="alerta" size={13} />
+        <p role="alert" className="text-danger mt-2 flex items-center gap-2 text-xs">
+          <Icon name="alerta" size="md" />
           {erro}
         </p>
       )}
 
-      <ul className="dp-list">
+      <ul className="my-2 flex max-h-48 flex-col gap-0.5 overflow-y-auto">
         {listagem?.parent && (
-          <li>
-            <button className="ghost" onClick={() => abrir(listagem.parent!)}>
-              <Icon name="subir" size={13} />
+          <li className="flex">
+            <Button
+              variant="ghost"
+              onClick={() => abrir(listagem.parent!)}
+              className="h-6.5 flex-1 justify-start px-2 text-xs"
+            >
+              <Icon name="pasta" size="md" />
               pasta acima
-            </button>
+            </Button>
           </li>
         )}
-        {listagem?.entries.length === 0 && <li className="hint">(sem subpastas)</li>}
+        {listagem?.entries.length === 0 && (
+          <li className="text-muted-foreground px-2 text-xs">(sem subpastas)</li>
+        )}
         {listagem?.entries.map((pasta) => (
-          <li key={pasta.path}>
-            <button className="ghost" onClick={() => abrir(pasta.path)} title={pasta.path}>
-              <Icon name="pasta" size={13} />
+          <li key={pasta.path} className="flex">
+            <Button
+              variant="ghost"
+              onClick={() => abrir(pasta.path)}
+              title={pasta.path}
+              className="h-6.5 flex-1 justify-start px-2 text-xs"
+            >
+              <Icon name="pasta" size="md" />
               {pasta.name}
-              {pasta.git && <span className="badge">git</span>}
-            </button>
+              {pasta.git && (
+                <Badge variant="outline" className="text-faint ml-auto text-[9px]">
+                  git
+                </Badge>
+              )}
+            </Button>
           </li>
         ))}
       </ul>
 
-      <div className="dp-new">
-        <input
+      <div className="mb-2 flex gap-1">
+        <Input
+          aria-label="Nome da nova subpasta"
           placeholder="criar subpasta aqui…"
           value={novaPasta}
           onChange={(evento) => setNovaPasta(evento.target.value)}
@@ -104,23 +125,36 @@ export default function DirPicker({
               criarPasta();
             }
           }}
+          className="h-6.5 flex-1 text-xs"
         />
-        <button type="button" className="ghost" onClick={criarPasta} disabled={!novaPasta.trim()}>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={criarPasta}
+          disabled={!novaPasta.trim()}
+          className="h-6.5 px-2.5 text-[11px]"
+        >
           Criar
-        </button>
+        </Button>
       </div>
 
-      <div className="dp-actions">
-        <button
+      <div className="flex gap-1">
+        <Button
           type="button"
           onClick={() => listagem && onPick(listagem.display)}
           disabled={!listagem}
+          className="h-6.5 px-2.5 text-[11px]"
         >
           Usar esta pasta
-        </button>
-        <button type="button" className="ghost" onClick={onClose}>
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onClose}
+          className="h-6.5 px-2.5 text-[11px]"
+        >
           Cancelar
-        </button>
+        </Button>
       </div>
     </div>
   );
