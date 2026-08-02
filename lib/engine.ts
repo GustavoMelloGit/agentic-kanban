@@ -25,12 +25,13 @@ import {
   type Worktree,
 } from "./worktree";
 import { consultarPr, descreverConsultaDePr } from "./pr";
+import { MARCADORES_DE_CANCELAMENTO, type MotivoDeCancelamento } from "./cancelamento";
 
 // In-process state (single-process dev prototype).
 const running = new Set<string>();
 const children = new Map<string, ChildProcess>();
 const jobs = new Map<string, Promise<void>>();
-const cancelled = new Set<string>();
+const cancelled = new Map<string, MotivoDeCancelamento>();
 
 function nowStamp() {
   return new Date().toISOString();
@@ -105,6 +106,31 @@ async function registrarPr(id: string, columnId: string, project: Project | unde
   }
 }
 
+// O marcador vai no canal em que o usuário está olhando: thread na coluna de
+// chat, histórico nas demais.
+function registrarCancelamento(
+  id: string,
+  columnId: string,
+  motivo: MotivoDeCancelamento,
+  tool?: string
+) {
+  const marcadores = MARCADORES_DE_CANCELAMENTO[motivo];
+
+  if (getColumn(columnId)?.chat) {
+    addMessage(id, "agent", marcadores.chat);
+    return;
+  }
+
+  addRun({
+    cardId: id,
+    column: columnId,
+    tool,
+    ok: false,
+    output: marcadores.historico,
+    at: nowStamp(),
+  });
+}
+
 function startAgent(id: string, columnId: string) {
   register(id, runCard(id, columnId));
 }
@@ -122,7 +148,7 @@ export async function moveCard(id: string, toColumnId: string, opts: { chained?:
   const card = getCardRow(id);
 
   if (card && card.status === "running") {
-    await cancelCard(id); // kill the agent before the card leaves the column
+    await cancelCard(id, "movimentacao"); // kill the agent before the card leaves the column
   }
 
   if (!opts.chained && card && card.reviewCycles > 0) setReviewCycles(id, 0);
@@ -207,13 +233,44 @@ export function startRun(id: string): ResultadoDeExecucao {
 }
 
 // Cancel the agent currently working a card. Resolves once cleanup is done.
-export async function cancelCard(id: string): Promise<boolean> {
+export async function cancelCard(id: string, motivo: MotivoDeCancelamento): Promise<boolean> {
   if (!running.has(id)) return false;
-  cancelled.add(id);
+  cancelled.set(id, motivo);
   killTree(children.get(id));
   const job = jobs.get(id);
   if (job) await job; // wait until runCard has fully unwound
+  cancelled.delete(id); // run que saiu antes de consumir o motivo não contamina o próximo
   return true;
+}
+
+export type ResultadoDeCancelamento =
+  | "cancelada"
+  | "destravada"
+  | "nada-para-cancelar"
+  | "card-inexistente";
+
+// Interrompe o que o card estiver fazendo, sem exigir que ele mude de coluna.
+// O registro de execução vive em memória (topo do arquivo), então um restart no
+// meio de um run deixa o card `running` no banco sem processo pra matar — nesse
+// caso cancelar é destravar o status à força, ou o chat ficaria bloqueado pra
+// sempre.
+export async function cancelarOperacao(id: string): Promise<ResultadoDeCancelamento> {
+  const cardRow = getCardRow(id);
+  if (!cardRow) {
+    logErro("cancelamento de operação", `card não encontrado: ${id}`);
+    return "card-inexistente";
+  }
+
+  if (await cancelCard(id, "cancelamento")) return "cancelada";
+  if (cardRow.status !== "running") return "nada-para-cancelar";
+
+  logErro(
+    "cancelamento de operação",
+    `card ${id} estava "running" sem agente em execução (provável restart do servidor); status destravado`
+  );
+  setCardStatus(id, "idle");
+  registrarCancelamento(id, cardRow.columnId, "cancelamento");
+  return "destravada";
 }
 
 // Run the agent for a card in the given column.
@@ -301,17 +358,11 @@ export async function runCard(id: string, columnId?: string) {
     children.delete(id);
 
     // Cancelled by the user: record it, don't error, don't chain onward.
-    if (cancelled.has(id)) {
+    const motivoDoCancelamento = cancelled.get(id);
+    if (motivoDoCancelamento) {
       cancelled.delete(id);
       setCardStatus(id, "idle");
-      addRun({
-        cardId: id,
-        column: col.id,
-        tool: project.tool,
-        ok: false,
-        output: "⚠ Execução cancelada pelo usuário (card movido durante a atuação do agente).",
-        at: nowStamp(),
-      });
+      registrarCancelamento(id, col.id, motivoDoCancelamento, project.tool);
       return;
     }
 
@@ -422,10 +473,11 @@ async function runChatTurn(id: string) {
     });
     children.delete(id);
 
-    if (cancelled.has(id)) {
+    const motivoDoCancelamento = cancelled.get(id);
+    if (motivoDoCancelamento) {
       cancelled.delete(id);
       setCardStatus(id, "idle");
-      addMessage(id, "agent", "⚠ (resposta cancelada — card movido durante a conversa)");
+      registrarCancelamento(id, col.id, motivoDoCancelamento);
       return;
     }
 
@@ -444,7 +496,7 @@ export function createCard(input: { title: string; description?: string; project
 // Delete a card. A running agent is killed first, so nothing writes back a
 // status/run for a card that no longer exists.
 export async function deleteCard(id: string): Promise<boolean> {
-  await cancelCard(id);
+  await cancelCard(id, "exclusao");
 
   const cardRow = getCardRow(id);
   if (cardRow) await limparWorktree(id, getProject(cardRow.projectId));
