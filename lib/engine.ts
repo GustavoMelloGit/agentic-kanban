@@ -25,7 +25,11 @@ import {
   type Worktree,
 } from "./worktree";
 import { consultarPr, descreverConsultaDePr } from "./pr";
-import { MARCADORES_DE_CANCELAMENTO, type MotivoDeCancelamento } from "./cancelamento";
+import {
+  MARCADORES_DE_CANCELAMENTO,
+  semMarcadoresDeCancelamento,
+  type MotivoDeCancelamento,
+} from "./cancelamento";
 
 // In-process state (single-process dev prototype).
 const running = new Set<string>();
@@ -238,7 +242,16 @@ export function sendMessage(id: string, text: unknown): ResultadoDeMensagem {
   return "enviada";
 }
 
-export type ResultadoDeExecucao = "iniciada" | "agente-ocupado";
+export type ResultadoDeExecucao = "iniciada" | "agente-ocupado" | "sem-conversa-para-continuar";
+
+// Coluna de chat cujo turno de abertura é do humano (Human Review) não tem nem
+// `instruction` nem `opening`: com o thread vazio o prompt sairia sem tarefa
+// nenhuma e o turno gravaria no thread uma resposta que ninguém pediu.
+function semTurnoParaRodar(coluna: Column, id: string): boolean {
+  if (!coluna.chat) return false;
+  if (coluna.instruction || coluna.chatPrompt?.opening) return false;
+  return semMarcadoresDeCancelamento(getMessages(id)).length === 0;
+}
 
 // Redispara o agente da coluna atual fora do ciclo da requisição: a rota responde
 // na hora e o SSE empurra o desfecho. O resultado só diz se o disparo aconteceu.
@@ -252,6 +265,15 @@ export function startRun(id: string): ResultadoDeExecucao {
 
   const cardRow = getCardRow(id);
   const coluna = cardRow ? getColumn(cardRow.columnId) : undefined;
+
+  if (coluna && semTurnoParaRodar(coluna, id)) {
+    logErro(
+      "run manual",
+      `card ${id} está em "${coluna.id}", coluna de chat sem conversa iniciada; run recusado`
+    );
+    return "sem-conversa-para-continuar";
+  }
+
   register(id, coluna?.chat ? runChatTurn(id) : runCard(id));
   return "iniciada";
 }
