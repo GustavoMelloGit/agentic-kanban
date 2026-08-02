@@ -1,4 +1,5 @@
 import { sendMessage } from "../../../../../lib/engine";
+import { casoNaoTratado } from "../../../../../lib/exaustividade";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -19,5 +20,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       );
     case "enviada":
       return Response.json({ ok: true });
+    default:
+      casoNaoTratado("envio de mensagem", resultado);
+      return Response.json({ error: "não foi possível enviar a mensagem" }, { status: 500 });
   }
 }

@@ -1,10 +1,12 @@
 import { startRun } from "../../../../../lib/engine";
+import { casoNaoTratado } from "../../../../../lib/exaustividade";
 
 // Redispara o agente da coluna atual do card.
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  switch (startRun(id)) {
+  const resultado = startRun(id);
+  switch (resultado) {
     case "card-inexistente":
       return Response.json({ error: "card não encontrado" }, { status: 404 });
     case "coluna-sem-agente":
@@ -16,5 +18,8 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       );
     case "iniciada":
       return Response.json({ ok: true });
+    default:
+      casoNaoTratado("run manual", resultado);
+      return Response.json({ error: "não foi possível iniciar a execução" }, { status: 500 });
   }
 }
