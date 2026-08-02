@@ -71,12 +71,27 @@ export async function moveCard(id: string, toColumnId: string, opts: { chained?:
   }
 }
 
+export type ResultadoDeMensagem = "enviada" | "card-inexistente" | "coluna-sem-chat";
+
 // User sends a message in a chat column; the agent replies in a new turn.
-export function sendMessage(id: string, text: string) {
-  const t = text.trim();
-  if (!t) return;
-  addMessage(id, "user", t);
+// Fora de uma coluna de chat a resposta seria montada com a persona e a
+// instruction da coluna atual — em Development, um agente que edita código.
+export function sendMessage(id: string, text: string): ResultadoDeMensagem {
+  const cardRow = getCardRow(id);
+  if (!cardRow) {
+    logErro("envio de mensagem", `card não encontrado: ${id}`);
+    return "card-inexistente";
+  }
+
+  const coluna = getColumn(cardRow.columnId);
+  if (!coluna?.chat) {
+    logErro("envio de mensagem", `card ${id} está em "${cardRow.columnId}", que não é coluna de chat`);
+    return "coluna-sem-chat";
+  }
+
+  addMessage(id, "user", text.trim());
   startChatTurn(id);
+  return "enviada";
 }
 
 // Cancel the agent currently working a card. Resolves once cleanup is done.
