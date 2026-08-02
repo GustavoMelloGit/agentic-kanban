@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { MAX_REVIEW_CYCLES, type Board } from "../lib/config";
 import { parseVerdict } from "../lib/verdict";
 import { pedirJson } from "../lib/http";
+import { semMarcadoresDeCancelamento } from "../lib/cancelamento";
 import ChatThread from "./ChatThread";
 import Markdown from "./Markdown";
 import ProjectsPanel from "./ProjectsPanel";
@@ -19,6 +20,7 @@ export default function BoardPage() {
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [live, setLive] = useState(true);
+  const [cancelandoId, setCancelandoId] = useState<string | null>(null);
 
   // O envio da mensagem é assíncrono e a caixa de chat é uma só pro board
   // inteiro: sem saber qual card está na tela agora, o restore do rascunho
@@ -120,6 +122,21 @@ export default function BoardPage() {
     if (!resultado.ok) setErro(resultado.erro ?? "não foi possível rodar o agente");
   }
 
+  // Fora do chat um cancelamento joga fora minutos de implementação, por isso a
+  // confirmação; no chat o botão só vale se for instantâneo.
+  async function cancelarOperacao(id: string, confirmar: boolean) {
+    const aviso =
+      "Um agente está atuando neste card.\n\n" +
+      "Cancelar interrompe a execução agora. O que já foi commitado na worktree fica. Continuar?";
+    if (confirmar && !window.confirm(aviso)) return;
+
+    setCancelandoId(id);
+    const resultado = await pedirJson(`/api/cards/${id}/cancel`, { method: "POST" });
+    setCancelandoId((atual) => (atual === id ? null : atual));
+
+    if (!resultado.ok) setErro(resultado.erro ?? "não foi possível cancelar a operação");
+  }
+
   async function removeCard(id: string) {
     const card = board!.cards.find((candidato) => candidato.id === id);
     if (!card) return;
@@ -187,6 +204,9 @@ export default function BoardPage() {
   const openCol = openCard
     ? board.columns.find((coluna) => coluna.id === openCard.columnId)
     : null;
+  // Thread só com marcador de cancelamento é conversa que nunca começou — é o
+  // que o agente enxerga no prompt, então é o que o placeholder deve refletir.
+  const conversaDoCard = openCard ? semMarcadoresDeCancelamento(openCard.messages) : [];
 
   return (
     <>
@@ -305,18 +325,34 @@ export default function BoardPage() {
                       </span>
                     )}
                   </div>
-                  {col.type !== "manual" && !col.chat && card.status !== "running" && (
+                  {card.status === "running" ? (
                     <div className="actions">
                       <button
-                        className="ghost"
+                        className="ghost danger"
+                        disabled={cancelandoId === card.id}
                         onClick={(evento) => {
                           evento.stopPropagation();
-                          runNow(card.id);
+                          cancelarOperacao(card.id, !col.chat);
                         }}
                       >
-                        Rodar agente de novo
+                        {cancelandoId === card.id ? "cancelando…" : "Cancelar operação"}
                       </button>
                     </div>
+                  ) : (
+                    col.type !== "manual" &&
+                    !col.chat && (
+                      <div className="actions">
+                        <button
+                          className="ghost"
+                          onClick={(evento) => {
+                            evento.stopPropagation();
+                            runNow(card.id);
+                          }}
+                        >
+                          Rodar agente de novo
+                        </button>
+                      </div>
+                    )
                   )}
                   {card.messages.length > 0 && (
                     <div className="meta">
@@ -337,11 +373,20 @@ export default function BoardPage() {
           </button>
           <h3>{openCard.title}</h3>
           <p className="desc">{openCard.description}</p>
-          <p>
+          <div className="drawer-actions">
+            {!openCol?.chat && openCard.status === "running" && (
+              <button
+                className="ghost danger"
+                disabled={cancelandoId === openCard.id}
+                onClick={() => cancelarOperacao(openCard.id, true)}
+              >
+                {cancelandoId === openCard.id ? "cancelando…" : "Cancelar operação"}
+              </button>
+            )}
             <button className="ghost danger" onClick={() => removeCard(openCard.id)}>
               Excluir card
             </button>
-          </p>
+          </div>
 
           {openCol?.chat && (
             <div className="chat">
@@ -360,14 +405,29 @@ export default function BoardPage() {
                 }}
               >
                 <input
-                  placeholder={openCard.status === "running" ? "Aguarde a resposta…" : "Responda ao agente…"}
+                  placeholder={
+                    openCard.status === "running"
+                      ? "Aguarde a resposta…"
+                      : conversaDoCard.length === 0
+                      ? "Comece a conversa…"
+                      : "Responda ao agente…"
+                  }
                   value={chatInput}
                   onChange={(evento) => setChatInput(evento.target.value)}
                   disabled={openCard.status === "running"}
                 />
-                <button type="submit" disabled={openCard.status === "running"}>
-                  Enviar
-                </button>
+                {openCard.status === "running" ? (
+                  <button
+                    type="button"
+                    className="danger"
+                    disabled={cancelandoId === openCard.id}
+                    onClick={() => cancelarOperacao(openCard.id, false)}
+                  >
+                    {cancelandoId === openCard.id ? "cancelando…" : "Cancelar"}
+                  </button>
+                ) : (
+                  <button type="submit">Enviar</button>
+                )}
               </form>
             </div>
           )}
