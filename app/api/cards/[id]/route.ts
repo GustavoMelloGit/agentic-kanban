@@ -1,10 +1,14 @@
 import { deleteCard, updateCard } from "../../../../lib/engine";
 import { validateCardPatch } from "../../../../lib/cards";
+import { logErro } from "../../../../lib/log";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const checked = validateCardPatch(await req.json());
-  if ("error" in checked) return Response.json({ error: checked.error }, { status: 400 });
+  if ("error" in checked) {
+    logErro("edição de card", `card ${id}: ${checked.error}`);
+    return Response.json({ error: checked.error }, { status: 400 });
+  }
 
   const resultado = updateCard(id, checked.fields);
   switch (resultado.situacao) {

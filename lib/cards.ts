@@ -2,7 +2,12 @@ import type { Card } from "./config";
 import { textoNaoVazio } from "./texto";
 
 export type CardFields = Partial<Pick<Card, "title" | "description">>;
-export type NewCardFields = { title: string; description?: string; projectId?: string };
+export type NewCardFields = {
+  title: string;
+  description?: string;
+  projectId?: string;
+  columnId?: string;
+};
 
 export type Validated<T> = { error: string } | { fields: T };
 
@@ -26,13 +31,18 @@ function validarDescricao(corpo: Record<string, unknown>): { error: string } | {
   return { description: corpo.description.trim() };
 }
 
-// O projeto define tool e workspace: um valor que não é texto apontaria o agente
-// pro repo errado se virasse o projeto padrão calado.
-function validarProjeto(corpo: Record<string, unknown>): { error: string } | { projectId?: string } {
-  if (corpo.projectId === undefined) return {};
-  const projectId = textoNaoVazio(corpo.projectId);
-  if (!projectId) return { error: "projeto é obrigatório" };
-  return { projectId };
+// Ausente é legítimo — o store tem padrão pros dois. Mas um valor que não é
+// texto cairia nesse padrão calado: o card iria pro repo errado, ou pra uma
+// coluna que não é a que o humano escolheu.
+function validarTextoOpcional<Campo extends string>(
+  corpo: Record<string, unknown>,
+  campo: Campo,
+  erro: string
+): { error: string } | Partial<Record<Campo, string>> {
+  if (corpo[campo] === undefined) return {};
+  const texto = textoNaoVazio(corpo[campo]);
+  if (!texto) return { error: erro };
+  return { [campo]: texto } as Record<Campo, string>;
 }
 
 export function validateNewCard(body: unknown): Validated<NewCardFields> {
@@ -45,10 +55,13 @@ export function validateNewCard(body: unknown): Validated<NewCardFields> {
   const descricao = validarDescricao(corpo);
   if ("error" in descricao) return descricao;
 
-  const projeto = validarProjeto(corpo);
+  const projeto = validarTextoOpcional(corpo, "projectId", "projeto é obrigatório");
   if ("error" in projeto) return projeto;
 
-  return { fields: { ...titulo, ...descricao, ...projeto } };
+  const coluna = validarTextoOpcional(corpo, "columnId", "coluna é obrigatória");
+  if ("error" in coluna) return coluna;
+
+  return { fields: { ...titulo, ...descricao, ...projeto, ...coluna } };
 }
 
 export function validateCardPatch(body: unknown): Validated<CardFields> {
