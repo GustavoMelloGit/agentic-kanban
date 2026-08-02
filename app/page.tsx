@@ -250,6 +250,7 @@ export default function BoardPage() {
         <BoardColumn
           key={col.id}
           col={col}
+          columns={board.columns}
           vazia={cardsIn(col.id).length === 0}
           arrastando={dragOver === col.id}
           podeAdicionar={board.projects.length > 0}

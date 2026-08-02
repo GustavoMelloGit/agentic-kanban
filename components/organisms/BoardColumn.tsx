@@ -6,6 +6,7 @@ import { cn } from "@/lib/ui/utils";
 
 export default function BoardColumn({
   col,
+  columns,
   vazia,
   arrastando,
   compositor,
@@ -17,6 +18,7 @@ export default function BoardColumn({
   children,
 }: {
   col: Column;
+  columns: Column[];
   vazia: boolean;
   arrastando: boolean;
   compositor?: React.ReactNode;
@@ -37,7 +39,7 @@ export default function BoardColumn({
         arrastando && "border-primary bg-surface-2"
       )}
     >
-      <ColumnHeader col={col} />
+      <ColumnHeader col={col} columns={columns} />
 
       {/* o estado vazio some assim que o compositor abre: dois convites pra
           mesma ação, um deles já aceito, viram ruído */}
