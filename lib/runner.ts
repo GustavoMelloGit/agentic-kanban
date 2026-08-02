@@ -4,7 +4,7 @@ import fs from "node:fs";
 import type { Column, Project, Tool, RunEntry, ChatMessage } from "./config";
 import { logErro } from "./log";
 import { formatTranscript } from "./transcript";
-import { semMarcadoresDeCancelamento, ultimaEtapaSemCancelamento } from "./cancelamento";
+import { mensagensParaContexto, ultimaEtapaParaContexto } from "./contexto";
 import type { Worktree } from "./worktree";
 
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 min safety cap per run
@@ -39,7 +39,7 @@ export function buildPrompt(
   parts.push(`Project: ${project.name}`);
   if (worktree) parts.push(gitIsolationSection(worktree));
   parts.push(`\n## Card: ${card.title}\n${card.description || "(no description)"}`);
-  const conversa = semMarcadoresDeCancelamento(card.messages);
+  const conversa = mensagensParaContexto(card.messages);
   if (conversa.length) {
     parts.push(
       "\n## Requirements discussion (Enrichment)\n" +
@@ -48,7 +48,7 @@ export function buildPrompt(
         formatTranscript(conversa)
     );
   }
-  const etapaAnterior = ultimaEtapaSemCancelamento(card.history);
+  const etapaAnterior = ultimaEtapaParaContexto(card.history);
   if (etapaAnterior) {
     parts.push(
       `\n## Context from previous stage (${etapaAnterior.column})\n${etapaAnterior.output}`
@@ -76,7 +76,7 @@ export function buildChatPrompt(
   parts.push(`Project: ${project.name}`);
   parts.push(`\n## Card\n**${card.title}**\n${card.description || "(no description)"}`);
 
-  const conversa = semMarcadoresDeCancelamento(card.messages);
+  const conversa = mensagensParaContexto(card.messages);
   if (conversa.length === 0) {
     parts.push(
       `\n## Task\n${column.instruction}\n\nExplore the workspace first as instructed above, then open the conversation: give a brief, code-grounded read of the idea and your first questions.`

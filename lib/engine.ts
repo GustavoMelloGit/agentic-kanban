@@ -14,7 +14,14 @@ import {
   deleteCard as storeDeleteCard,
 } from "./store";
 import { buildPrompt, buildChatPrompt, runTool, killTree, ensureWorkspaceDir } from "./runner";
-import { MAX_REVIEW_CYCLES, type Card, type Column, type Project } from "./config";
+import {
+  MAX_REVIEW_CYCLES,
+  colunaRodaAgente,
+  type Card,
+  type Column,
+  type Project,
+} from "./config";
+import { registrarExecucao, encerrarExecucao, temAgenteVivo } from "./execucoes";
 import { parseVerdict } from "./verdict";
 import { logErro } from "./log";
 import { textoNaoVazio } from "./texto";
@@ -27,8 +34,8 @@ import {
 import { consultarPr, descreverConsultaDePr } from "./pr";
 import { MARCADORES_DE_CANCELAMENTO, type MotivoDeCancelamento } from "./cancelamento";
 
-// In-process state (single-process dev prototype).
-const running = new Set<string>();
+// In-process state (single-process dev prototype). Quais cards têm agente vivo
+// vive em ./execucoes, porque o board também consulta.
 const children = new Map<string, ChildProcess>();
 const jobs = new Map<string, Promise<void>>();
 const cancelled = new Map<string, MotivoDeCancelamento>();
@@ -54,7 +61,7 @@ function register(id: string, work: Promise<void>) {
 }
 
 function agenteOcupado(id: string): boolean {
-  return running.has(id) || jobs.has(id);
+  return temAgenteVivo(id) || jobs.has(id);
 }
 
 // Worktree órfã atrapalha o próximo card, mas derrubar a movimentação por causa
@@ -238,23 +245,42 @@ export function sendMessage(id: string, text: unknown): ResultadoDeMensagem {
   return "enviada";
 }
 
-export type ResultadoDeExecucao = "iniciada" | "agente-ocupado";
+export type ResultadoDeExecucao =
+  | "iniciada"
+  | "agente-ocupado"
+  | "card-inexistente"
+  | "coluna-sem-agente";
 
 // Redispara o agente da coluna atual fora do ciclo da requisição: a rota responde
 // na hora e o SSE empurra o desfecho. O resultado só diz se o disparo aconteceu.
+// Numa coluna de chat o disparo refaz o último turno — o mesmo caminho de uma
+// mensagem nova, sem exigir que o usuário digite outra pra destravar a conversa.
 export function startRun(id: string): ResultadoDeExecucao {
+  const cardRow = getCardRow(id);
+  if (!cardRow) {
+    logErro("run manual", `card não encontrado: ${id}`);
+    return "card-inexistente";
+  }
+
+  const coluna = getColumn(cardRow.columnId);
+  if (!colunaRodaAgente(coluna)) {
+    logErro("run manual", `card ${id} está em "${cardRow.columnId}", coluna sem agente; run recusado`);
+    return "coluna-sem-agente";
+  }
+
   if (agenteOcupado(id)) {
     logErro("run manual", `card ${id} já tem um agente em execução; run recusado`);
     return "agente-ocupado";
   }
 
-  register(id, runCard(id));
+  if (coluna.chat) startChatTurn(id);
+  else startAgent(id, coluna.id);
   return "iniciada";
 }
 
 // Cancel the agent currently working a card. Resolves once cleanup is done.
 export async function cancelCard(id: string, motivo: MotivoDeCancelamento): Promise<boolean> {
-  if (!running.has(id)) return false;
+  if (!temAgenteVivo(id)) return false;
   cancelled.set(id, motivo);
   killTree(children.get(id));
   const job = jobs.get(id);
@@ -270,10 +296,10 @@ export type ResultadoDeCancelamento =
   | "card-inexistente";
 
 // Interrompe o que o card estiver fazendo, sem exigir que ele mude de coluna.
-// O registro de execução vive em memória (topo do arquivo), então um restart no
-// meio de um run deixa o card `running` no banco sem processo pra matar — nesse
-// caso cancelar é destravar o status à força, ou o chat ficaria bloqueado pra
-// sempre.
+// Execução que morreu com o processo não chega mais aqui — o board já mostra
+// esse card como falha e oferece o "rodar de novo" —, mas o destravamento fica
+// como saída de emergência. Sem marcador de cancelamento: ninguém cancelou nada,
+// e gravar um seria mentir no histórico.
 export async function cancelarOperacao(id: string): Promise<ResultadoDeCancelamento> {
   const cardRow = getCardRow(id);
   if (!cardRow) {
@@ -289,17 +315,16 @@ export async function cancelarOperacao(id: string): Promise<ResultadoDeCancelame
     `card ${id} estava "running" sem agente em execução (provável restart do servidor); status destravado`
   );
   setCardStatus(id, "idle");
-  registrarCancelamento(id, cardRow.columnId, "cancelamento");
   return "destravada";
 }
 
 // Run the agent for a card in the given column.
 export async function runCard(id: string, columnId?: string) {
-  if (running.has(id)) {
+  if (temAgenteVivo(id)) {
     logErro("execução do card", `card ${id} já tem um agente em execução; execução descartada`);
     return;
   }
-  running.add(id);
+  registrarExecucao(id);
 
   let chainTo: string | null = null;
   try {
@@ -398,7 +423,7 @@ export async function runCard(id: string, columnId?: string) {
       chainTo = routeAfterRun(id, col, result.output);
     }
   } finally {
-    running.delete(id);
+    encerrarExecucao(id);
     children.delete(id);
   }
 
@@ -443,11 +468,11 @@ function routeAfterRun(id: string, col: Column, output: string): string | null {
 // One turn of a chat column: build the transcript prompt, get the agent's reply,
 // store it as an "agent" message. Shares the cancel machinery with runCard.
 async function runChatTurn(id: string) {
-  if (running.has(id)) {
+  if (temAgenteVivo(id)) {
     logErro("turno de chat", `card ${id} já tem um agente em execução; turno descartado`);
     return;
   }
-  running.add(id);
+  registrarExecucao(id);
 
   try {
     const cardRow = getCardRow(id);
@@ -465,8 +490,8 @@ async function runChatTurn(id: string) {
     const tool = project ? board.tools[project.tool] : undefined;
 
     if (!project || !tool) {
-      setCardStatus(id, "idle");
-      addMessage(id, "agent", `⚠ Tool/project inválido para o card ${id}.`);
+      setCardStatus(id, "error");
+      addMessage(id, "agent", `⚠ Tool/project inválido para o card ${id}.`, false);
       return;
     }
 
@@ -493,9 +518,12 @@ async function runChatTurn(id: string) {
     if (consumirCancelamento(id, col.id)) return;
 
     setCardStatus(id, result.ok ? "idle" : "error");
-    addMessage(id, "agent", result.output);
+    // A resposta que falhou fica na thread pra quem quiser ler o que quebrou,
+    // mas marcada: o turno seguinte a ignora e responde a mensagem do usuário
+    // outra vez, em vez de continuar de cima de um traceback.
+    addMessage(id, "agent", result.output, result.ok);
   } finally {
-    running.delete(id);
+    encerrarExecucao(id);
     children.delete(id);
   }
 }

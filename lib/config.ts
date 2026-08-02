@@ -43,6 +43,12 @@ export interface Column {
   entryPoint?: boolean;
 }
 
+// Coluna manual não tem persona nem instruction: não há agente pra disparar
+// nela, nem pela chegada do card nem pelo "rodar de novo".
+export function colunaRodaAgente(column: Column | undefined): column is Column {
+  return !!column && column.type !== "manual";
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -63,6 +69,9 @@ export interface RunEntry {
 export interface ChatMessage {
   role: "user" | "agent";
   content: string;
+  // desfecho do turno que produziu a mensagem: `false` marca resposta que
+  // falhou, que fica visível na thread mas não volta como contexto
+  ok?: boolean;
   at: string;
 }
 
