@@ -11,6 +11,22 @@ export interface Tool {
   args: string[]; // "{{prompt}}" is replaced with the built prompt at spawn time
 }
 
+// The column-specific half of a chat prompt. Everything a chat turn shares
+// (card, transcript, git isolation) is assembled by buildChatPrompt.
+export interface ChatPrompt {
+  // tone and limits of the conversation, repeated in every turn
+  briefing: string;
+  // the agent's first turn, when the thread is still empty. Absent in columns
+  // where the human always speaks first.
+  opening?: string;
+  // what to do after reading the transcript, in every later turn
+  continuation: string;
+  // how the agent's own turns are labelled in the transcript. "You" only fits a
+  // column that owns the whole thread; the default neutral label is what a
+  // column reading turns written in *other* columns needs.
+  agentLabel?: string;
+}
+
 export interface Column {
   id: string;
   name: string;
@@ -23,10 +39,13 @@ export interface Column {
   persona: string;
   instruction: string;
   // chat columns hold a back-and-forth conversation instead of a one-shot run.
-  // On arrival the agent opens the conversation; the user replies drive more turns.
+  // In an "autonomous"/"automated" column the agent opens it on arrival; in a
+  // "manual" one the human speaks first. Either way, replies drive more turns.
   chat?: boolean;
+  chatPrompt?: ChatPrompt;
   // verdict columns end their run with "VERDICT: APPROVE | CHANGES_REQUESTED".
   // On CHANGES_REQUESTED the card goes to onReject instead of onComplete.
+  // In a chat column the marker only counts on the last line of a turn.
   verdict?: boolean;
   onReject?: string | null;
   // worktree columns run their agent inside the card's own git worktree and
@@ -102,6 +121,15 @@ export const TOOLS: Record<string, Tool> = {
 };
 
 // --- Columns ---------------------------------------------------------------
+
+// The chat is re-spawned every turn (no native session), so a column that wants
+// the agent to know the code has to say it in every turn.
+const WORKSPACE_EXPLORATION_DIRECTIVE =
+  "You are running inside this project's workspace: the current working directory IS the project. " +
+  "Before restating the goal or asking anything, explore the workspace to understand it for real — this is read-only, do NOT modify anything. " +
+  "Read the README and any documentation, the dependency manifest (package.json or its equivalent), the folder structure, and the modules relevant to what this card asks for. " +
+  "Ground what you write in what you actually find in the code — the real stack, conventions and current state — never in generic assumptions.";
+
 export const COLUMNS: Column[] = [
   {
     id: "ideas",
@@ -125,6 +153,23 @@ export const COLUMNS: Column[] = [
       "Then write, in product language: two or three lines restating the goal as you understood it, followed by only the questions that are genuinely the user's to answer.\n" +
       "A question belongs to the user only when the answer changes the card's initial design — the intended behavior, what shows up on screen, what is in or out of scope, or a decision that is expensive to reverse. If you already know a better way to do something and taking it does not change that design, take it and at most record it as a one-line assumption. Anything internal — structure, naming, which library, where the code lives — you decide silently.\n" +
       "At most three questions, one line each. No file paths, no module or symbol names, no code, no technical justification. Asking nothing is a valid and good answer: if the idea is already clear enough to build, say so and list the requirements. Do NOT write code.",
+    chatPrompt: {
+      briefing:
+        "You are refining a Kanban card with the user — the person who had the idea, not the person who will read the code. " +
+        "Keep every reply short, conversational and in product language, and never hand them a decision you are able to take yourself. " +
+        "Do NOT write code.\n" +
+        WORKSPACE_EXPLORATION_DIRECTIVE +
+        "\nThe exploration is for you: it exists so you can settle questions yourself instead of forwarding them to the user. " +
+        "It never becomes content of your reply — no file paths, no module or symbol names, no stack details, no explanation of how the code works today. " +
+        "What you learn shows up only as fewer questions and more confident decisions.",
+      opening:
+        "Explore the workspace first as instructed above, then open the conversation: a short read of what you understood, and only the questions that are really the user's to answer.",
+      continuation:
+        "Respond to the user's latest message. Ask again only if an open decision about the card's design is still blocking; prefer closing the conversation over one more round of questions. " +
+        "To close it: summarize the finalized requirements and acceptance criteria, list in one line each the decisions you took on your own, and say they're ready for development.",
+      // O refinamento é a primeira coluna do thread: tudo que está lá é turno seu.
+      agentLabel: "You",
+    },
   },
   {
     id: "development",
@@ -159,8 +204,31 @@ export const COLUMNS: Column[] = [
     type: "manual",
     onComplete: null,
     requiresPr: true,
-    persona: "",
+    // manual + chat: nothing runs on arrival, the human opens the conversation.
+    // The only move the agent can make from here is back to Development.
+    chat: true,
+    verdict: true,
+    onReject: "development",
+    worktree: true,
+    persona: "a senior engineer walking a human reviewer through the change already on this card's branch",
+    // Sem run one-shot: aqui quem fala primeiro é o humano, então todo o trabalho
+    // da coluna é descrito no chatPrompt, que se repete a cada turno.
     instruction: "",
+    chatPrompt: {
+      briefing:
+        "You are answering a human who is reviewing this card's change before approving it. " +
+        "The change is implemented and pushed: read the diff of the branch against the base (both named in the Git isolation section) plus anything still uncommitted, and ground every answer in it — cite the concrete files and lines you read on the branch, never the base version. " +
+        "If there is no Git isolation section, this card never went through Development: say there is no branch to review instead of guessing what changed.\n" +
+        "Do NOT write, edit or commit code — this column reviews, it does not implement. " +
+        "Keep replies short and concrete — they are reading a diff, not a report. " +
+        "Answering a question is a complete turn: the card only leaves this column when the human's change request is settled. " +
+        "Approving is the human's move, never yours.",
+      continuation:
+        "Earlier turns in the transcript may have been written by agents of other columns of this board, not by you — only the human's latest message is the request you are answering now. " +
+        "If it is a question, answer it and stop. " +
+        "If it is a change request, make sure you understand exactly what must change — ask when it is vague — and only then write the request as the developer agent must receive it (what to change, in which files, and why), and close the turn with a final line that is exactly `VERDICT: CHANGES_REQUESTED`. " +
+        "That line sends the card back to Development, so never write it while anything is still being discussed, and never write it just to acknowledge a question.",
+    },
   },
   {
     id: "done",
