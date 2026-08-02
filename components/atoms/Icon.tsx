@@ -1,17 +1,22 @@
 import {
   AlertTriangle,
-  Bot,
   Check,
+  CircleCheck,
   CircleStop,
+  Code,
+  Columns3,
   CornerDownLeft,
   Folder,
+  Lightbulb,
   Loader2,
   MessageSquare,
+  MessagesSquare,
   RotateCw,
+  SearchCheck,
   Trash2,
   Unlink,
+  UserCheck,
   X,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/ui/utils";
@@ -30,9 +35,15 @@ const ICONES = {
   fechar: X,
   girando: Loader2,
   pasta: Folder,
-  raio: Zap,
   recomecar: RotateCw,
-  robo: Bot,
+  // identidade das colunas do board
+  coluna: Columns3,
+  codigo: Code,
+  concluido: CircleCheck,
+  ideia: Lightbulb,
+  pessoa: UserCheck,
+  refino: MessagesSquare,
+  revisao: SearchCheck,
 } satisfies Record<string, LucideIcon>;
 
 export type NomeDoIcone = keyof typeof ICONES;
