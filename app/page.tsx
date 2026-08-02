@@ -280,6 +280,8 @@ export default function BoardPage() {
                     }`
                   : col.type === "automated"
                   ? "🤖 automated (fica)"
+                  : col.chat
+                  ? "💬 manual · chat"
                   : "manual"}
               </span>
             </h2>
@@ -391,7 +393,11 @@ export default function BoardPage() {
           {openCol?.chat && (
             <div className="chat">
               {openCard.messages.length === 0 && openCard.status !== "running" && (
-                <p className="hint">A conversa começa quando o card chega aqui.</p>
+                <p className="hint">
+                  {openCol.type === "manual"
+                    ? "Pergunte sobre a implementação ou peça uma mudança — o agente lê a branch do card."
+                    : "A conversa começa quando o card chega aqui."}
+                </p>
               )}
               <ChatThread
                 messages={openCard.messages}
