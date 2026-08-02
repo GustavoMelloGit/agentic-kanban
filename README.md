@@ -98,7 +98,9 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 - `lib/store.ts` — queries/mutations tipadas + `getBoard()`; emite mudança no bus
 - `lib/bus.ts` — event bus in-process que alimenta o SSE
 - `lib/runner.ts` — monta o prompt e faz `spawn` da CLI no workspace
-- `lib/transcript.ts` — formata a transcrição do chat pro prompt, com teto de caracteres
+- `lib/transcript.ts` — formata a transcrição do chat pro prompt, com teto rígido de
+  caracteres (o marcador de corte sai do próprio orçamento)
+- `lib/texto.ts` — normaliza texto vindo do corpo da requisição (`textoNaoVazio`)
 - `lib/engine.ts` — mover card, disparar/cancelar agente, encadear colunas e
   rotear pelo veredito (`routeAfterRun`)
 - `app/api/*` — endpoints REST + `events` (SSE):

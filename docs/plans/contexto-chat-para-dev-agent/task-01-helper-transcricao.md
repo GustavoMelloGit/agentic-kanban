@@ -58,8 +58,11 @@ Comportamento exigido:
    prefixa `MARCADOR_DE_CORTE` seguido de linha em branco. Cortar pela cauda é
    proposital: o fim da conversa é onde mora o resumo dos requisitos.
 5. Se a **última** mensagem sozinha já estourar o limite, corte-a preservando o
-   fim do conteúdo (`.slice(-limite)`), também com o marcador na frente.
-6. O resultado nunca pode exceder `limiteDeCaracteres` + tamanho do marcador.
+   fim do conteúdo (`.slice(-orcamento)`) e o rótulo inteiro, também com o
+   marcador na frente.
+6. `limiteDeCaracteres` é **teto rígido**: nenhum retorno pode excedê-lo. O
+   marcador de corte e o separador saem do próprio orçamento. Se o teto não
+   comporta nem o marcador, a transcrição sai truncada sem ele (com log).
 
 Regras do projeto que valem aqui: nomes de variável que dizem intenção (nada de
 `m`, `i`, `acc`), comentário só onde a lógica não fala por si (o *porquê* de

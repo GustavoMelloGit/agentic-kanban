@@ -68,7 +68,8 @@ e já são populados pra qualquer coluna. A única mudança de assinatura é
 - `lib/transcript.ts` — `formatTranscript(messages, opcoes)`: junta as mensagens
   com rótulos configuráveis (`rotuloDoUsuario`, `rotuloDoAgente`) e aplica
   `LIMITE_DE_CARACTERES_DA_TRANSCRICAO` (12 000) descartando mensagens do começo;
-  se a última mensagem sozinha estoura, corta o miolo dela pelo fim.
+  se a última mensagem sozinha estoura, corta o miolo dela pelo fim. O teto é
+  rígido — o marcador de corte é descontado do orçamento, não somado a ele.
 - `app/ChatThread.tsx` — client component com o thread (bolhas + markdown nas
   respostas do agente + indicador "pensando…"), usado pelas duas situações do
   drawer sem duplicar JSX.
