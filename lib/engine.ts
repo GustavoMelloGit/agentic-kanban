@@ -35,10 +35,23 @@ import { consultarPr, descreverConsultaDePr } from "./pr";
 import { MARCADORES_DE_CANCELAMENTO, type MotivoDeCancelamento } from "./cancelamento";
 
 // In-process state (single-process dev prototype). Quais cards têm agente vivo
-// vive em ./execucoes, porque o board também consulta.
-const children = new Map<string, ChildProcess>();
-const jobs = new Map<string, Promise<void>>();
-const cancelled = new Map<string, MotivoDeCancelamento>();
+// vive em ./execucoes, porque o board também consulta — e, como lá, este estado
+// mora no globalThis: o processo filho sobrevive ao hot-reload do módulo em dev,
+// então o handle pra matá-lo e o job pra esperar têm que sobreviver junto. Se um
+// dos três se perdesse, o board mostraria "rodando" um agente órfão que o
+// cancelamento não alcança mais.
+const estadoGlobal = globalThis as unknown as {
+  __children?: Map<string, ChildProcess>;
+  __jobs?: Map<string, Promise<void>>;
+  __cancelled?: Map<string, MotivoDeCancelamento>;
+};
+
+const children: Map<string, ChildProcess> =
+  estadoGlobal.__children ?? (estadoGlobal.__children = new Map());
+const jobs: Map<string, Promise<void>> =
+  estadoGlobal.__jobs ?? (estadoGlobal.__jobs = new Map());
+const cancelled: Map<string, MotivoDeCancelamento> =
+  estadoGlobal.__cancelled ?? (estadoGlobal.__cancelled = new Map());
 
 function nowStamp() {
   return new Date().toISOString();
