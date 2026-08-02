@@ -51,7 +51,11 @@ gate de aprovação humana antes de colunas autônomas; horários permitidos pra
 
 ## Dívidas menores / hygiene
 
-- **Editar card**: criar, mover e excluir já existem; falta `PATCH` (título/descrição/projeto) + UI.
+- **Trocar o projeto de um card**: o CRUD está fechado (`PATCH /api/cards/:id` edita título e
+  descrição, com UI no drawer), mas o `projectId` é imutável **por decisão**, não por falta de
+  tempo: a worktree do card mora dentro do repo do workspace do projeto e `limparWorktree` usa o
+  projeto que o card tem na hora de remover — trocar deixaria a worktree órfã pra sempre. Só volta
+  a valer a pena junto com uma migração de worktree (ou restrito a card que nunca rodou).
 - **Render de markdown** nas mensagens/histórico (hoje texto cru no `<pre>`).
 - **Reset do board**: um botão/endpoint pra limpar (hoje é `rm data/board.db*`).
 - **`@types/node` está em ^26** no package.json (Node local é 22) — checar se convém alinhar.
