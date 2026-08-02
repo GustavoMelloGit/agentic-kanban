@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { MAX_REVIEW_CYCLES, type Board } from "../lib/config";
 import { parseVerdict } from "../lib/verdict";
 import { pedirJson } from "../lib/http";
+import ChatThread from "./ChatThread";
 import ProjectsPanel from "./ProjectsPanel";
 
 export default function BoardPage() {
@@ -329,27 +330,15 @@ export default function BoardPage() {
             </button>
           </p>
 
-          {openCol?.chat ? (
+          {openCol?.chat && (
             <div className="chat">
-              <div className="chat-thread">
-                {openCard.messages.length === 0 && openCard.status !== "running" && (
-                  <p className="hint">A conversa começa quando o card chega aqui.</p>
-                )}
-                {openCard.messages.map((mensagem, indice) => (
-                  <div key={indice} className={`msg msg-${mensagem.role}`}>
-                    <div className="msg-role">{mensagem.role === "user" ? "Você" : "Agente"}</div>
-                    <div className="msg-body">{mensagem.content}</div>
-                  </div>
-                ))}
-                {openCard.status === "running" && (
-                  <div className="msg msg-agent">
-                    <div className="msg-role">Agente</div>
-                    <div className="msg-body hint">
-                      <span className="spinner">◐</span> pensando…
-                    </div>
-                  </div>
-                )}
-              </div>
+              {openCard.messages.length === 0 && openCard.status !== "running" && (
+                <p className="hint">A conversa começa quando o card chega aqui.</p>
+              )}
+              <ChatThread
+                messages={openCard.messages}
+                pensando={openCard.status === "running"}
+              />
               <form
                 className="chat-input"
                 onSubmit={(evento) => {
@@ -368,7 +357,19 @@ export default function BoardPage() {
                 </button>
               </form>
             </div>
-          ) : (
+          )}
+
+          {!openCol?.chat && openCard.messages.length > 0 && (
+            <details className="entry chat-archive">
+              <summary>
+                <b>💬 Conversa</b>
+                <span className="hint">{openCard.messages.length} mensagens · só leitura</span>
+              </summary>
+              <ChatThread messages={openCard.messages} pensando={false} />
+            </details>
+          )}
+
+          {(!openCol?.chat || openCard.history.length > 0) && (
             <>
               <h4>Histórico do agente ({openCard.history.length})</h4>
               {openCard.history.length === 0 && <p className="hint">Nenhuma execução ainda.</p>}

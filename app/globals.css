@@ -192,6 +192,9 @@ table.projects .row-actions button { font-size: 11px; padding: 4px 8px; white-sp
 }
 .chat-input input:disabled { opacity: .5; }
 .chat-input button:disabled { opacity: .5; cursor: default; }
+.chat-archive[open] > summary { border-bottom: 1px solid var(--border); }
+.chat-archive .chat-thread { padding: 10px; }
+
 /* markdown preview (resposta do agente) */
 /* o .msg-body é pre-wrap pra mensagem do usuário; no markdown o espaçamento
    quem dá é o próprio bloco, senão sobra linha em branco entre parágrafos */
