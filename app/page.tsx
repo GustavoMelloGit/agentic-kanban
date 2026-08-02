@@ -395,7 +395,7 @@ export default function BoardPage() {
               {openCard.messages.length === 0 && openCard.status !== "running" && (
                 <p className="hint">
                   {openCol.type === "manual"
-                    ? "Pergunte sobre a implementação ou peça uma mudança — o agente lê a branch do card."
+                    ? "Pergunte sobre a implementação ou peça uma mudança — o agente lê a branch do card, quando houver uma."
                     : "A conversa começa quando o card chega aqui."}
                 </p>
               )}
