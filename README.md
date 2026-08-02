@@ -61,6 +61,13 @@ Cada coluna tem um `type` que decide **os dois** comportamentos de uma vez:
 | `automated`   | ✅ | ❌ (fica)           |
 | `manual`      | ❌ | ❌                  |
 
+`chat: true` altera as duas colunas da tabela, então a Human Review (`manual` +
+`chat` + `verdict`) foge das duas células: o agente não roda na chegada mas roda
+a cada mensagem sua, e o card sai dali quando o agente fecha o turno com
+`VERDICT: CHANGES_REQUESTED` — sempre pra trás, pro `onReject`. Detalhes em
+[Colunas de veredito](#colunas-de-veredito-ai-review-human-review) e
+[Colunas de chat](#colunas-de-chat).
+
 ## Fluxo das colunas (configurável em `lib/config.ts`)
 
 | Coluna        | type        | Ao terminar                            |
@@ -107,11 +114,12 @@ Em coluna de chat só `CHANGES_REQUESTED` roteia: `onComplete` é `null`, então
 aprovar continua sendo movimento seu, no arrasto para Done. Num run one-shot o
 marcador vale na primeira linha; **numa coluna de chat só roteia na última linha
 não vazia do turno** (`separarVeredito`), senão o agente devolveria o card só por
-citar o formato ao explicar o fluxo. A linha do marcador
-sai do texto onde quer que apareça — mesmo quando não roteou, ela é protocolo e
-não conversa — e o thread mostra "↩ card devolvido para Development" no lugar. O
-pedido inteiro vai pro histórico, que é o canal que o dev agent lê. Devolução
-pedida pelo humano **não** consome ciclo de review: ela zera o contador.
+citar o formato ao explicar o fluxo. Só a linha que **roteou** sai do texto, e no
+lugar dela o thread mostra "↩ card devolvido para Development": um marcador em
+qualquer outra posição fica visível, senão você leria um pedido de mudança
+completo sem nenhum sinal de que o card não saiu da coluna. O pedido inteiro vai
+pro histórico, que é o canal que o dev agent lê. Devolução pedida pelo humano
+**não** consome ciclo de review: ela zera o contador.
 
 ## Estrutura
 
