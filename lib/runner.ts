@@ -6,6 +6,14 @@ import { logErro } from "./log";
 
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 min safety cap per run
 
+// The chat is re-spawned every turn (no native session), so this directive
+// must go into every turn to keep replies anchored in the real code.
+const WORKSPACE_EXPLORATION_DIRECTIVE =
+  "You are running inside this project's workspace: the current working directory IS the project. " +
+  "Before restating the goal or asking anything, explore the workspace to understand it for real — this is read-only, do NOT modify anything. " +
+  "Read the README and any documentation, the dependency manifest (package.json or its equivalent), the folder structure, and the modules relevant to what this card asks for. " +
+  "Ground your restatement and every question in what you actually find in the code — the real stack, conventions, current state, and concrete files — never in generic assumptions.";
+
 export function buildPrompt(
   column: Column,
   card: { title: string; description: string; history: RunEntry[] },
@@ -37,18 +45,22 @@ export function buildChatPrompt(
       "Ask focused questions in small batches, progressively filling the gaps. " +
       "Keep replies concise and conversational. Do NOT write code."
   );
+  parts.push(WORKSPACE_EXPLORATION_DIRECTIVE);
   parts.push(`Project: ${project.name}`);
   parts.push(`\n## Card\n**${card.title}**\n${card.description || "(no description)"}`);
 
   if (card.messages.length === 0) {
-    parts.push(`\n## Task\n${column.instruction}\n\nOpen the conversation now: give a brief read of the idea and your first questions.`);
+    parts.push(
+      `\n## Task\n${column.instruction}\n\nExplore the workspace first as instructed above, then open the conversation: give a brief, code-grounded read of the idea and your first questions.`
+    );
   } else {
     const transcript = card.messages
       .map((mensagem) => `${mensagem.role === "user" ? "User" : "You"}: ${mensagem.content}`)
       .join("\n\n");
     parts.push(`\n## Conversation so far\n${transcript}`);
     parts.push(
-      "\n## Now\nRespond to the user's latest message. Ask further questions if gaps remain, or — if the requirements now look complete — summarize the finalized requirements and acceptance criteria and say they're ready for development."
+      "\n## Now\nThis chat is re-spawned from scratch every turn — the transcript above is your only memory, so re-orient yourself in the workspace whenever you need to keep your answers anchored in the real code. " +
+        "Respond to the user's latest message. Ask further questions if gaps remain, or — if the requirements now look complete — summarize the finalized requirements and acceptance criteria and say they're ready for development."
     );
   }
   return parts.join("\n");

@@ -101,7 +101,7 @@ export const COLUMNS: Column[] = [
     persona:
       "a sharp product analyst who turns half-baked ideas into clear, buildable requirements",
     instruction:
-      "This card is an early idea and is under-specified. Identify the gaps. Produce: (1) a crisp restatement of the goal, and (2) the 3-6 most important open questions you need answered before development. Do NOT write code.",
+      "This card is an early idea and is under-specified. Identify the gaps. Produce: (1) a crisp restatement of the goal, and (2) the 3-6 most important open questions you need answered before development. Anchor both the restatement and the questions in the concrete files and modules you found in the code. Do NOT write code.",
   },
   {
     id: "development",
