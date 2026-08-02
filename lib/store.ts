@@ -56,6 +56,8 @@ export function getColumn(id: string): Column | undefined {
   return COLUMNS.find((coluna) => coluna.id === id);
 }
 
+export type CardRow = typeof cards.$inferSelect;
+
 export function getCardRow(id: string) {
   return db.select().from(cards).where(eq(cards.id, id)).get();
 }
@@ -178,4 +180,17 @@ export function createCard(input: { title: string; description?: string; project
   db.insert(cards).values(row).run();
   emitChange();
   return { ...row, history: [], messages: [] };
+}
+
+export function updateCard(
+  id: string,
+  patch: Partial<Pick<Card, "title" | "description">>
+): CardRow | undefined {
+  const existente = getCardRow(id);
+  if (!existente) return undefined;
+  // `.set({})` estoura no drizzle, e um patch vazio não tem o que notificar.
+  if (Object.keys(patch).length === 0) return existente;
+  db.update(cards).set(patch).where(eq(cards.id, id)).run();
+  emitChange();
+  return { ...existente, ...patch };
 }
