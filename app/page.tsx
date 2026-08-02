@@ -139,7 +139,10 @@ export default function BoardPage() {
       method: "POST",
       body: JSON.stringify({ text: texto }),
     });
-    if (!resultado.ok) setErro(resultado.erro ?? "não foi possível enviar a mensagem");
+    if (!resultado.ok) {
+      setChatInput(texto);
+      setErro(resultado.erro ?? "não foi possível enviar a mensagem");
+    }
   }
 
   async function addCard(evento: React.FormEvent) {

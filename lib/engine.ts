@@ -28,12 +28,24 @@ function nowStamp() {
   return new Date().toISOString();
 }
 
-// Register a running job so cancelCard() can await it.
+// Register a running job so cancelCard() can await it. Um segundo job para o
+// mesmo card é encadeado no anterior — sobrescrever faria cancelCard() esperar
+// o job errado.
 function register(id: string, work: Promise<void>) {
-  const job = work
-    .catch((erro) => logErro(`agente do card ${id}`, erro))
-    .finally(() => jobs.delete(id));
-  jobs.set(id, job);
+  const jobAnterior = jobs.get(id);
+  const trabalhoLogado = work.catch((erro) => logErro(`agente do card ${id}`, erro));
+  const jobRastreado: Promise<void> = (
+    jobAnterior
+      ? Promise.allSettled([jobAnterior, trabalhoLogado]).then(() => undefined)
+      : trabalhoLogado
+  ).finally(() => {
+    if (jobs.get(id) === jobRastreado) jobs.delete(id);
+  });
+  jobs.set(id, jobRastreado);
+}
+
+function agenteOcupado(id: string): boolean {
+  return running.has(id) || jobs.has(id);
 }
 
 function startAgent(id: string, columnId: string) {
@@ -71,7 +83,12 @@ export async function moveCard(id: string, toColumnId: string, opts: { chained?:
   }
 }
 
-export type ResultadoDeMensagem = "enviada" | "card-inexistente" | "coluna-sem-chat";
+export type ResultadoDeMensagem =
+  | "enviada"
+  | "card-inexistente"
+  | "coluna-sem-chat"
+  | "mensagem-vazia"
+  | "agente-ocupado";
 
 // User sends a message in a chat column; the agent replies in a new turn.
 // Fora de uma coluna de chat a resposta seria montada com a persona e a
@@ -89,7 +106,18 @@ export function sendMessage(id: string, text: string): ResultadoDeMensagem {
     return "coluna-sem-chat";
   }
 
-  addMessage(id, "user", text.trim());
+  const textoDaMensagem = text.trim();
+  if (!textoDaMensagem) {
+    logErro("envio de mensagem", `mensagem vazia para o card ${id}`);
+    return "mensagem-vazia";
+  }
+
+  if (agenteOcupado(id)) {
+    logErro("envio de mensagem", `card ${id} já tem um turno em andamento; mensagem recusada`);
+    return "agente-ocupado";
+  }
+
+  addMessage(id, "user", textoDaMensagem);
   startChatTurn(id);
   return "enviada";
 }
@@ -227,7 +255,10 @@ function routeAfterRun(id: string, col: Column, output: string): string | null {
 // One turn of a chat column: build the transcript prompt, get the agent's reply,
 // store it as an "agent" message. Shares the cancel machinery with runCard.
 async function runChatTurn(id: string) {
-  if (running.has(id)) return;
+  if (running.has(id)) {
+    logErro("turno de chat", `card ${id} já tem um agente em execução; turno descartado`);
+    return;
+  }
   running.add(id);
 
   try {
