@@ -347,6 +347,7 @@ export async function runCard(id: string, columnId?: string) {
       addRun({
         cardId: id,
         column: col.id,
+        ok: false,
         output: `Unknown tool/project for card ${id}`,
         at: nowStamp(),
       });
