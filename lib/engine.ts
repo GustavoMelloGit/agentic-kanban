@@ -164,6 +164,17 @@ function consumirCancelamento(id: string, columnId: string, tool?: string): bool
   return true;
 }
 
+// Execução que morreu junto com o processo (restart, queda) deixa o card
+// "running" no banco sem agente pra terminá-la. Destravar é só corrigir o
+// status: ninguém cancelou nada, então nenhum marcador vai pro histórico.
+function destravarCardFantasma(id: string, contexto: string) {
+  logErro(
+    contexto,
+    `card ${id} estava "running" sem agente em execução (provável restart do servidor); status destravado`
+  );
+  setCardStatus(id, "idle");
+}
+
 function startAgent(id: string, columnId: string) {
   register(id, runCard(id, columnId));
 }
@@ -181,7 +192,11 @@ export async function moveCard(id: string, toColumnId: string, opts: { chained?:
   const card = getCardRow(id);
 
   if (card && card.status === "running") {
-    await cancelCard(id, "movimentacao"); // kill the agent before the card leaves the column
+    // kill the agent before the card leaves the column; sem agente vivo, o
+    // "running" é fantasma e sai daqui destravado — numa coluna manual não
+    // sobraria nenhuma ação capaz de desfazê-lo
+    const cancelada = await cancelCard(id, "movimentacao");
+    if (!cancelada) destravarCardFantasma(id, "movimentação de card");
   }
 
   if (!opts.chained && card && card.reviewCycles > 0) setReviewCycles(id, 0);
@@ -323,11 +338,7 @@ export async function cancelarOperacao(id: string): Promise<ResultadoDeCancelame
   if (await cancelCard(id, "cancelamento")) return "cancelada";
   if (cardRow.status !== "running") return "nada-para-cancelar";
 
-  logErro(
-    "cancelamento de operação",
-    `card ${id} estava "running" sem agente em execução (provável restart do servidor); status destravado`
-  );
-  setCardStatus(id, "idle");
+  destravarCardFantasma(id, "cancelamento de operação");
   return "destravada";
 }
 
