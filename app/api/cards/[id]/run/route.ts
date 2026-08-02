@@ -4,11 +4,17 @@ import { startRun } from "../../../../../lib/engine";
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
 
-  if (startRun(id) === "agente-ocupado") {
-    return Response.json(
-      { error: "o agente já está atuando neste card — aguarde a execução terminar" },
-      { status: 409 }
-    );
+  switch (startRun(id)) {
+    case "card-inexistente":
+      return Response.json({ error: "card não encontrado" }, { status: 404 });
+    case "coluna-sem-agente":
+      return Response.json({ error: "esta coluna não tem agente pra rodar" }, { status: 409 });
+    case "agente-ocupado":
+      return Response.json(
+        { error: "o agente já está atuando neste card — aguarde a execução terminar" },
+        { status: 409 }
+      );
+    case "iniciada":
+      return Response.json({ ok: true });
   }
-  return Response.json({ ok: true });
 }

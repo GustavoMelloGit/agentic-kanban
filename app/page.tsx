@@ -309,6 +309,7 @@ export default function BoardPage() {
             onClose={() => setOpen(null)}
             onCancel={(confirmar) => cancelarOperacao(openCard.id, confirmar)}
             onRemove={() => removeCard(openCard.id)}
+            onRun={() => runNow(openCard.id)}
             onSendChat={() => sendChat(openCard.id)}
           />
         )
