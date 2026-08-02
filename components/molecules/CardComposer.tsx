@@ -80,20 +80,21 @@ export default function CardComposer({
         className="placeholder:text-faint w-full resize-none bg-transparent font-semibold leading-snug outline-none"
       />
 
-      {projects.length > 1 && (
-        <Select value={projectId} onValueChange={onProjectChange}>
-          <SelectTrigger aria-label="Projeto do novo card" className="mt-2 h-7 w-full text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {projects.map((projeto) => (
-              <SelectItem key={projeto.id} value={projeto.id}>
-                {projeto.name} · {projeto.tool}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
+      {/* sempre visível, mesmo com um projeto só: é o projeto que decide qual
+          CLI roda e em qual workspace, então o card não deve nascer sem que dê
+          pra ver — e conferir — o destino */}
+      <Select value={projectId} onValueChange={onProjectChange}>
+        <SelectTrigger aria-label="Projeto do novo card" className="mt-2 h-7 w-full text-xs">
+          <SelectValue placeholder="Escolha o projeto" />
+        </SelectTrigger>
+        <SelectContent>
+          {projects.map((projeto) => (
+            <SelectItem key={projeto.id} value={projeto.id}>
+              {projeto.name} · {projeto.tool}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
       <div className="mt-2 flex items-center gap-2">
         <Button
