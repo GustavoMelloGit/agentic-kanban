@@ -1,0 +1,26 @@
+"use client";
+
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
+
+// O conteúdo vem do agente: links abrem fora da aba do board pra não perder o
+// estado do drawer, e sem referrer porque o destino é imprevisível.
+const componentes: Components = {
+  // `node` é a árvore do parser e não é atributo de DOM — vaza como
+  // node="[object Object]" no HTML se não for descartado aqui
+  a: ({ node, children, ...props }) => (
+    <a {...props} target="_blank" rel="noreferrer noopener">
+      {children}
+    </a>
+  ),
+};
+
+export default function Markdown({ content }: { content: string }) {
+  return (
+    <div className="markdown">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={componentes}>
+        {content}
+      </ReactMarkdown>
+    </div>
+  );
+}
