@@ -17,6 +17,7 @@ import { buildPrompt, buildChatPrompt, runTool, killTree } from "./runner";
 import { MAX_REVIEW_CYCLES, type Card, type Column } from "./config";
 import { parseVerdict } from "./verdict";
 import { logErro } from "./log";
+import { textoNaoVazio } from "./texto";
 
 // In-process state (single-process dev prototype).
 const running = new Set<string>();
@@ -93,7 +94,7 @@ export type ResultadoDeMensagem =
 // User sends a message in a chat column; the agent replies in a new turn.
 // Fora de uma coluna de chat a resposta seria montada com a persona e a
 // instruction da coluna atual — em Development, um agente que edita código.
-export function sendMessage(id: string, text: string): ResultadoDeMensagem {
+export function sendMessage(id: string, text: unknown): ResultadoDeMensagem {
   const cardRow = getCardRow(id);
   if (!cardRow) {
     logErro("envio de mensagem", `card não encontrado: ${id}`);
@@ -106,9 +107,12 @@ export function sendMessage(id: string, text: string): ResultadoDeMensagem {
     return "coluna-sem-chat";
   }
 
-  const textoDaMensagem = text.trim();
+  const textoDaMensagem = textoNaoVazio(text);
   if (!textoDaMensagem) {
-    logErro("envio de mensagem", `mensagem vazia para o card ${id}`);
+    logErro(
+      "envio de mensagem",
+      `mensagem inválida para o card ${id}: esperava texto não vazio, veio ${typeof text}`
+    );
     return "mensagem-vazia";
   }
 
@@ -120,6 +124,20 @@ export function sendMessage(id: string, text: string): ResultadoDeMensagem {
   addMessage(id, "user", textoDaMensagem);
   startChatTurn(id);
   return "enviada";
+}
+
+export type ResultadoDeExecucao = "iniciada" | "agente-ocupado";
+
+// Redispara o agente da coluna atual fora do ciclo da requisição: a rota responde
+// na hora e o SSE empurra o desfecho. O resultado só diz se o disparo aconteceu.
+export function startRun(id: string): ResultadoDeExecucao {
+  if (agenteOcupado(id)) {
+    logErro("run manual", `card ${id} já tem um agente em execução; run recusado`);
+    return "agente-ocupado";
+  }
+
+  register(id, runCard(id));
+  return "iniciada";
 }
 
 // Cancel the agent currently working a card. Resolves once cleanup is done.
@@ -134,15 +152,24 @@ export async function cancelCard(id: string): Promise<boolean> {
 
 // Run the agent for a card in the given column.
 export async function runCard(id: string, columnId?: string) {
-  if (running.has(id)) return;
+  if (running.has(id)) {
+    logErro("execução do card", `card ${id} já tem um agente em execução; execução descartada`);
+    return;
+  }
   running.add(id);
 
   let chainTo: string | null = null;
   try {
     const cardRow = getCardRow(id);
-    if (!cardRow) return;
+    if (!cardRow) {
+      logErro("execução do card", `card não encontrado: ${id}`);
+      return;
+    }
     const col = getColumn(columnId ?? cardRow.columnId);
-    if (!col) return;
+    if (!col) {
+      logErro("execução do card", `coluna não encontrada: ${columnId ?? cardRow.columnId}`);
+      return;
+    }
     const project = getProject(cardRow.projectId);
     const board = getBoard();
     const tool = project ? board.tools[project.tool] : undefined;
@@ -263,9 +290,15 @@ async function runChatTurn(id: string) {
 
   try {
     const cardRow = getCardRow(id);
-    if (!cardRow) return;
+    if (!cardRow) {
+      logErro("turno de chat", `card não encontrado: ${id}`);
+      return;
+    }
     const col = getColumn(cardRow.columnId);
-    if (!col) return;
+    if (!col) {
+      logErro("turno de chat", `coluna não encontrada: ${cardRow.columnId}`);
+      return;
+    }
     const project = getProject(cardRow.projectId);
     const board = getBoard();
     const tool = project ? board.tools[project.tool] : undefined;

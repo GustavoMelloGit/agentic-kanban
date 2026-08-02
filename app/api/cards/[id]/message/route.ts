@@ -2,10 +2,9 @@ import { sendMessage } from "../../../../../lib/engine";
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { text } = await req.json();
-  if (!text || !text.trim()) return Response.json({ error: "text required" }, { status: 400 });
+  const corpo = (await req.json()) as { text?: unknown } | null;
 
-  const resultado = sendMessage(id, text);
+  const resultado = sendMessage(id, corpo?.text);
   switch (resultado) {
     case "card-inexistente":
       return Response.json({ error: "card não encontrado" }, { status: 404 });
