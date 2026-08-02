@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MAX_REVIEW_CYCLES, type Board } from "../lib/config";
+import { MAX_REVIEW_CYCLES, type Board, type Card } from "../lib/config";
 import { parseVerdict } from "../lib/verdict";
 import { pedirJson } from "../lib/http";
 import ChatThread from "./ChatThread";
 import Markdown from "./Markdown";
 import ProjectsPanel from "./ProjectsPanel";
+
+type CardDraft = Pick<Card, "title" | "description">;
 
 export default function BoardPage() {
   const [board, setBoard] = useState<Board | null>(null);
@@ -16,6 +18,9 @@ export default function BoardPage() {
   const [title, setTitle] = useState("");
   const [projectId, setProjectId] = useState("");
   const [chatInput, setChatInput] = useState("");
+  const [cardDraft, setCardDraft] = useState<CardDraft | null>(null);
+  const [erroDaEdicao, setErroDaEdicao] = useState<string | null>(null);
+  const [salvandoCard, setSalvandoCard] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [live, setLive] = useState(true);
@@ -26,6 +31,12 @@ export default function BoardPage() {
   const cardNaTela = useRef<string | null>(null);
   useEffect(() => {
     cardNaTela.current = open;
+  }, [open]);
+
+  // O rascunho de edição pertence ao card aberto; abrir outro começa limpo.
+  useEffect(() => {
+    setCardDraft(null);
+    setErroDaEdicao(null);
   }, [open]);
 
   // Live board via SSE: server pushes a fresh snapshot on every change.
@@ -139,6 +150,41 @@ export default function BoardPage() {
     if (!resultado.ok) setErro(resultado.erro ?? "não foi possível excluir o card");
   }
 
+  const draftDoCard = (card: Card): CardDraft =>
+    cardDraft ?? { title: card.title, description: card.description };
+
+  const edicaoSuja = (card: Card) =>
+    !!cardDraft && (cardDraft.title !== card.title || cardDraft.description !== card.description);
+
+  function editarCard(card: Card, patch: Partial<CardDraft>) {
+    setCardDraft({ ...draftDoCard(card), ...patch });
+  }
+
+  async function salvarCard(card: Card) {
+    const draft = draftDoCard(card);
+    if (!draft.title.trim()) {
+      setErroDaEdicao("Escreva um título pro card.");
+      return;
+    }
+
+    setSalvandoCard(true);
+    setErroDaEdicao(null);
+    const resultado = await pedirJson(`/api/cards/${card.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(draft),
+    });
+    setSalvandoCard(false);
+
+    // o drawer pode ter trocado de card durante o PATCH: o erro e o rascunho
+    // são do card que foi salvo, não do que está na tela agora
+    if (cardNaTela.current !== card.id) return;
+    if (!resultado.ok) {
+      setErroDaEdicao(resultado.erro ?? "não foi possível salvar o card");
+      return;
+    }
+    setCardDraft(null);
+  }
+
   async function sendChat(id: string) {
     const texto = chatInput.trim();
     if (!texto) return;
@@ -187,6 +233,7 @@ export default function BoardPage() {
   const openCol = openCard
     ? board.columns.find((coluna) => coluna.id === openCard.columnId)
     : null;
+  const agenteAtuando = openCard?.status === "running";
 
   return (
     <>
@@ -335,13 +382,51 @@ export default function BoardPage() {
           <button className="close ghost" onClick={() => setOpen(null)}>
             fechar
           </button>
-          <h3>{openCard.title}</h3>
-          <p className="desc">{openCard.description}</p>
-          <p>
-            <button className="ghost danger" onClick={() => removeCard(openCard.id)}>
-              Excluir card
-            </button>
-          </p>
+          <div className="card-edit">
+            <input
+              className="titulo"
+              aria-label="Título do card"
+              value={draftDoCard(openCard).title}
+              onChange={(evento) => editarCard(openCard, { title: evento.target.value })}
+              disabled={agenteAtuando}
+            />
+            <textarea
+              aria-label="Descrição do card"
+              placeholder="Descrição — é o que o agente de desenvolvimento recebe como requisito."
+              rows={5}
+              value={draftDoCard(openCard).description}
+              onChange={(evento) => editarCard(openCard, { description: evento.target.value })}
+              disabled={agenteAtuando}
+            />
+            {agenteAtuando && (
+              <p className="hint">
+                Um agente está atuando neste card — a edição volta quando ele terminar.
+              </p>
+            )}
+            {erroDaEdicao && <p className="form-error">⚠ {erroDaEdicao}</p>}
+            <div className="row-actions">
+              <button
+                onClick={() => salvarCard(openCard)}
+                disabled={!edicaoSuja(openCard) || salvandoCard || agenteAtuando}
+              >
+                Salvar
+              </button>
+              <button
+                className="ghost"
+                onClick={() => setCardDraft(null)}
+                disabled={!edicaoSuja(openCard) || salvandoCard}
+              >
+                Descartar
+              </button>
+              <button
+                className="ghost danger"
+                onClick={() => removeCard(openCard.id)}
+                disabled={salvandoCard}
+              >
+                Excluir card
+              </button>
+            </div>
+          </div>
 
           {openCol?.chat && (
             <div className="chat">

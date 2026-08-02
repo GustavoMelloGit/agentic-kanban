@@ -120,6 +120,20 @@ button.ghost.danger { color: var(--error); border-color: var(--error); }
 }
 .close { position: absolute; top: 14px; right: 16px; }
 
+/* edição inline do card no drawer — a margem do topo tira os campos de baixo
+   do botão "fechar", que é absoluto no canto */
+.card-edit { display: flex; flex-direction: column; gap: 8px; margin: 24px 0 16px; }
+.card-edit input, .card-edit textarea {
+  background: var(--panel-2); color: var(--text); width: 100%; font: inherit;
+  border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px;
+}
+.card-edit input.titulo { font-size: 16px; font-weight: 600; }
+.card-edit textarea { resize: vertical; min-height: 76px; }
+.card-edit input:disabled, .card-edit textarea:disabled { opacity: .5; }
+.card-edit .row-actions { display: flex; gap: 6px; }
+.card-edit .hint { color: var(--muted); font-size: 12px; margin: 0; }
+.card-edit .form-error { margin: 0; }
+
 /* modal de projetos */
 .modal-backdrop {
   position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 50;
