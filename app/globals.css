@@ -1,272 +1,279 @@
-* { box-sizing: border-box; }
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/* ============================================================================
+   Identidade — Dark Mode (OLED) sobre paleta Developer Tool / IDE.
+   O acento é índigo, e não o verde da paleta de origem, porque verde já é o
+   veredito APPROVE: reusar a mesma cor como marca apagaria a semântica de
+   status. Verde/âmbar/vermelho ficam reservados para estado.
+
+   O app é dark-only: os tokens do shadcn são declarados direto no :root com os
+   valores escuros, sem variante .dark pra manter em sincronia.
+   ========================================================================= */
 :root {
-  --bg: #0e1116;
-  --panel: #161b22;
-  --panel-2: #1c232d;
-  --border: #2a323d;
-  --text: #e6edf3;
-  --muted: #8b949e;
-  --accent: #4c8dff;
-  --running: #d29922;
-  --error: #f85149;
-  --ok: #3fb950;
+  color-scheme: dark;
+
+  /* --- contrato do shadcn --------------------------------------------- */
+  --background: #0b0e16;
+  --foreground: #f1f5f9;
+  --card: #161d2b;
+  --card-foreground: #f1f5f9;
+  --popover: #121826;
+  --popover-foreground: #f1f5f9;
+  --primary: #5e6ad2;
+  --primary-foreground: #ffffff;
+  --secondary: #1d2637;
+  --secondary-foreground: #f1f5f9;
+  --muted: #161d2b;
+  --muted-foreground: #94a3b8;
+  /* "accent" no shadcn é superfície de hover, não a cor de marca — a marca é
+     --primary. Trocar os dois deixa o board inteiro índigo. */
+  --accent: #1d2637;
+  --accent-foreground: #f1f5f9;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #232c3d;
+  --input: #232c3d;
+  --ring: #a5b4fc;
+  --radius: 0.625rem;
+
+  /* --- extensões do projeto -------------------------------------------- */
+  --surface: #121826;
+  --surface-2: #161d2b;
+  --surface-3: #1d2637;
+  --border-strong: #33405a;
+  /* o terceiro nível de texto é só um degrau abaixo do muted: mais escuro que
+     isso não alcança 4.5:1 nos 11px em que ele é usado */
+  --faint: #7f8da6;
+  /* o índigo sólido não alcança 4.5:1 como texto sobre os fundos escuros:
+     preenchimento usa --primary, texto e link usam --brand-text */
+  --brand-text: #a5b4fc;
+  --running: #f5a524;
+  --ok: #22c55e;
+  --danger: #f87171;
+
   --header-h: 60px;
 }
-html, body { margin: 0; padding: 0; }
-body {
-  background: var(--bg);
-  color: var(--text);
-  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-header {
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  /* altura fixa + z-index acima do drawer: senão o drawer (fixed, top 0, à
-     direita, altura total) cobre o form de adicionar card e engole os cliques */
-  height: var(--header-h);
-  box-sizing: border-box;
-  background: var(--bg);
-  position: relative;
-  z-index: 30;
-}
-header h1 { font-size: 16px; margin: 0; font-weight: 600; }
-header .hint { color: var(--muted); font-size: 12px; }
 
-.new-card {
-  display: flex; gap: 8px; margin-left: auto; align-items: center;
-}
-.new-card input, .new-card select {
-  background: var(--panel-2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px;
-}
-button {
-  background: var(--accent); color: white; border: 0;
-  border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 13px;
-}
-button.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
-button:hover { filter: brightness(1.1); }
-button:disabled { opacity: .45; cursor: not-allowed; filter: none; }
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
-.board {
-  display: flex; gap: 12px; padding: 16px; overflow-x: auto;
-  align-items: flex-start; min-height: calc(100vh - var(--header-h));
-}
-.top-error {
-  margin: 0; padding: 8px 20px; cursor: pointer;
-  background: rgba(248,81,73,.12); border-bottom: 1px solid var(--error);
-  color: var(--error); font-size: 12px;
-}
-.column {
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: 10px; width: 260px; flex: 0 0 260px; padding: 10px;
-}
-.column.dragover { border-color: var(--accent); }
-.column h2 { font-size: 13px; margin: 2px 4px 4px; display: flex; justify-content: space-between; }
-.column .tag { font-size: 10px; color: var(--muted); font-weight: 400; }
-.column .tag.auto { color: var(--accent); }
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border-strong: var(--border-strong);
+  --color-faint: var(--faint);
+  --color-brand-text: var(--brand-text);
+  --color-running: var(--running);
+  --color-ok: var(--ok);
+  --color-danger: var(--danger);
 
-.card {
-  background: var(--panel-2); border: 1px solid var(--border);
-  border-radius: 8px; padding: 10px; margin-top: 8px; cursor: grab;
-}
-.card:active { cursor: grabbing; }
-.card .title {
-  font-weight: 600; margin-bottom: 4px;
-  display: flex; justify-content: space-between; align-items: flex-start; gap: 6px;
-}
-.card .title .remove {
-  border: none; padding: 0 2px; font-size: 11px; line-height: 1.3;
-  opacity: 0; transition: opacity .12s;
-}
-.card:hover .title .remove, .card .title .remove:focus-visible { opacity: 1; }
-.card .title .remove:hover { color: var(--error); }
-button.danger { background: var(--error); color: #fff; }
-button.ghost.danger { background: transparent; color: var(--error); border-color: var(--error); }
-.card .desc { color: var(--muted); font-size: 12px; white-space: pre-wrap; }
-.card .meta { display: flex; gap: 6px; margin-top: 8px; align-items: center; flex-wrap: wrap; }
-.badge { font-size: 10px; padding: 2px 6px; border-radius: 20px; border: 1px solid var(--border); }
-.badge.project { color: var(--muted); }
-.badge.status-running { color: var(--running); border-color: var(--running); }
-.badge.status-error { color: var(--error); border-color: var(--error); }
-.badge.status-idle { display: none; }
-.badge.verdict-approved { color: var(--ok); border-color: var(--ok); }
-.badge.verdict-rejected { color: var(--running); border-color: var(--running); }
-.spinner { display: inline-block; animation: spin 1s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
 
-.card .actions { margin-top: 8px; display: flex; gap: 6px; }
-.card .actions button { font-size: 11px; padding: 3px 8px; }
+  /* Inter pro texto, JetBrains Mono pros trechos técnicos; as variáveis vêm do
+     next/font em app/layout.tsx */
+  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
 
-.drawer {
-  position: fixed; top: var(--header-h); right: 0; height: calc(100vh - var(--header-h));
-  width: 520px; max-width: 90vw; z-index: 10;
-  background: var(--panel); border-left: 1px solid var(--border);
-  padding: 20px; overflow-y: auto; box-shadow: -8px 0 24px rgba(0,0,0,.4);
+  /* uma curva de movimento só pro app inteiro */
+  --ease-board: cubic-bezier(0.16, 1, 0.3, 1);
 }
-.drawer h3 { margin-top: 0; }
-.drawer-actions { display: flex; gap: 8px; margin: 16px 0; }
-.drawer .entry { margin: 12px 0; border: 1px solid var(--border); border-radius: 8px; }
-.drawer .entry summary { padding: 8px 10px; cursor: pointer; display: flex; gap: 8px; }
-.drawer pre {
-  background: var(--bg); padding: 10px; border-radius: 6px; margin: 0 10px 10px;
-  white-space: pre-wrap; word-break: break-word; font-size: 12px; max-height: 400px; overflow: auto;
-}
-/* mesma caixa do .drawer pre, mas pro output de execução renderizado como
-   markdown — o espaçamento interno passa a ser dos blocos do .markdown */
-.drawer .entry-body {
-  background: var(--bg); padding: 10px; border-radius: 6px; margin: 0 10px 10px;
-  font-size: 12px; max-height: 400px; overflow: auto;
-}
-.close { position: absolute; top: 14px; right: 16px; }
 
-/* modal de projetos */
-.modal-backdrop {
-  position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 50;
-  display: flex; align-items: center; justify-content: center; padding: 24px;
+/* O message-scroller do shadcn conta com esta utility, que o Tailwind não gera
+   (as scrollbar-* e inset-s-* ele já traz). São 20px de desvanecimento na borda
+   de baixo do transcript, sinalizando que a conversa continua — o conteúdo tem
+   pb-5 pra que, no fim da lista, o que desbota seja o respiro e não a mensagem. */
+@utility scroll-fade-b {
+  mask-image: linear-gradient(to bottom, black calc(100% - 20px), transparent 100%);
 }
-.modal {
-  position: relative; background: var(--panel); border: 1px solid var(--border);
-  border-radius: 10px; padding: 20px; width: 780px; max-width: 100%;
-  max-height: 85vh; overflow-y: auto; box-shadow: 0 12px 32px rgba(0,0,0,.5);
-}
-.modal h3 { margin: 0 0 4px; }
-.modal h4 { margin: 0 0 8px; font-size: 13px; }
-.form-error { color: var(--error); font-size: 12px; }
 
-table.projects { width: 100%; border-collapse: collapse; margin: 14px 0 20px; font-size: 13px; }
-table.projects th {
-  text-align: left; font-size: 11px; font-weight: 500; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .04em; padding: 0 6px 6px;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans text-sm antialiased;
+  }
+  /* um anel de foco só, visível em qualquer superfície */
+  :focus-visible {
+    @apply outline-ring rounded-sm outline-2 outline-offset-2;
+  }
+  /* o movimento aqui é feedback, não decoração: quem pede menos movimento
+     perde a animação e mantém o estado final */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
-table.projects td { padding: 4px 6px; border-top: 1px solid var(--border); vertical-align: middle; }
-table.projects td.num { text-align: center; }
-table.projects input, table.projects select, .new-project input, .new-project select {
-  background: var(--panel-2); color: var(--text); width: 100%;
-  border: 1px solid var(--border); border-radius: 6px; padding: 5px 7px; font-size: 12px;
-}
-table.projects .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
-table.projects .row-actions button { font-size: 11px; padding: 4px 8px; white-space: nowrap; }
 
-.new-project { border-top: 1px solid var(--border); padding-top: 14px; }
-.new-project .fields { display: grid; grid-template-columns: 1fr 140px 1.4fr auto; gap: 8px; }
-.new-project .hint { font-size: 11px; margin: 6px 0 0; }
+/* ============================================================================
+   Markdown preview (resposta do agente e output de execução)
 
-/* seletor de pasta */
-.ws-field { display: flex; gap: 4px; align-items: center; }
-.ws-field button { padding: 4px 6px; line-height: 1; }
-.dirpicker {
-  margin: 8px 0 4px; padding: 10px; border: 1px solid var(--accent);
-  border-radius: 8px; background: var(--bg);
+   Fica em CSS e não em utilitário Tailwind porque o HTML aqui é gerado pelo
+   react-markdown em runtime: não há onde pendurar classe sem reimplementar
+   cada elemento como componente.
+   ========================================================================= */
+@layer components {
+  /* o .msg-body é pre-wrap pra mensagem do usuário; no markdown o espaçamento
+     quem dá é o próprio bloco, senão sobra linha em branco entre parágrafos */
+  .markdown {
+    white-space: normal;
+  }
+  /* o wrapper da tabela entra aqui e não numa regra própria: uma regra
+     .markdown .table-scroll ganharia do .markdown > :last-child e deixaria
+     margem sobrando quando a tabela fecha a mensagem */
+  .markdown p,
+  .markdown ul,
+  .markdown ol,
+  .markdown pre,
+  .markdown blockquote,
+  .markdown .table-scroll {
+    margin: 0 0 8px;
+  }
+  .markdown h1,
+  .markdown h2,
+  .markdown h3,
+  .markdown h4,
+  .markdown h5,
+  .markdown h6 {
+    margin: 12px 0 6px;
+    font-size: 14px;
+    line-height: 1.3;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+  .markdown h1 { font-size: 16px; }
+  .markdown h2 { font-size: 15px; }
+  .markdown h4,
+  .markdown h5,
+  .markdown h6 { font-size: 13px; }
+  .markdown > :first-child { margin-top: 0; }
+  .markdown > :last-child { margin-bottom: 0; }
+  .markdown ul,
+  .markdown ol { padding-left: 20px; }
+  .markdown ul { list-style: disc; }
+  .markdown ol { list-style: decimal; }
+  .markdown li + li { margin-top: 2px; }
+  .markdown li > p { margin: 0; }
+  /* a checkbox do remark-gfm já é o marcador, mas o reset vai no item e não na
+     lista: o remark marca como contains-task-list toda lista que tenha uma
+     task, e zerar o padding dela achata a lista aninhada e apaga o marcador do
+     item comum */
+  .markdown .task-list-item { list-style: none; }
+  .markdown .task-list-item input { margin: 0 6px 2px -20px; }
+  /* URL de PR não cabe em 500px: "anywhere" deixa quebrar sem estourar o
+     container, e ao contrário de break-word não força a quebra cedo demais */
+  .markdown a {
+    color: var(--brand-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    overflow-wrap: anywhere;
+  }
+  /* sem borda e com tinta leve: a saída do agente é cheia de identificador em
+     crase, e uma caixa desenhada por termo pica o parágrafo inteiro. Medida em
+     em pra acompanhar o contexto (bolha do chat 14px, histórico 12px), e o
+     padding vertical em em pra não inflar a entrelinha */
+  .markdown code {
+    background: color-mix(in oklab, var(--foreground) 12%, transparent);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    font-family: var(--font-mono);
+    font-size: 0.92em;
+    overflow-wrap: anywhere;
+    /* nome de branch longo quebra em duas linhas; sem o clone, o fundo é
+       desenhado uma vez só e o segundo pedaço sai sem caixa */
+    box-decoration-break: clone;
+    -webkit-box-decoration-break: clone;
+  }
+  /* no bloco de código a linha longa rola em vez de quebrar no meio do
+     identificador */
+  .markdown pre {
+    background: var(--background);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre;
+    word-break: normal;
+    font-size: 12px;
+  }
+  .markdown pre code {
+    background: none;
+    border: 0;
+    padding: 0;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+  /* o scroll fica no wrapper pra tabela larga rolar dentro da bolha em vez de
+     esticar o drawer; width max-content deixa a tabela pequena no tamanho dela */
+  .markdown .table-scroll { max-width: 100%; overflow-x: auto; }
+  .markdown table {
+    width: max-content;
+    margin: 0;
+    border-collapse: collapse;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  /* sem isso o break-word herdado da bolha derruba o min-content da coluna pra
+     um caractere: nada transborda, nada rola, e a coluna fica esmagada. o
+     overflow-wrap acompanha porque break-word equivale a normal + anywhere na
+     spec, e só o word-break não desfaz o anywhere herdado */
+  .markdown th,
+  .markdown td {
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    text-align: left;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+  /* o break-word do .markdown code é mais específico que o da célula e ganha
+     por herança: sem isso o caminho em crase quebra no meio em vez de rolar */
+  .markdown th code,
+  .markdown td code { word-break: normal; overflow-wrap: normal; }
+  .markdown th {
+    background: var(--surface);
+    color: var(--muted-foreground);
+    font-weight: 600;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .markdown blockquote {
+    border-left: 3px solid var(--border-strong);
+    padding-left: 12px;
+    color: var(--muted-foreground);
+  }
+  /* o :last-child do .markdown só alcança filho direto, então o último bloco da
+     citação ficaria com a margem de baixo sobrando dentro dela */
+  .markdown blockquote > :last-child { margin-bottom: 0; }
+  .markdown hr { border: 0; border-top: 1px solid var(--border); margin: 12px 0; }
+  .markdown img { max-width: 100%; }
 }
-.dp-head { display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
-.dp-head code { color: var(--muted); font-size: 11px; word-break: break-all; }
-.dp-list {
-  list-style: none; margin: 8px 0; padding: 0; max-height: 190px; overflow-y: auto;
-  display: flex; flex-direction: column; gap: 2px;
-}
-.dp-list li { display: flex; }
-.dp-list button {
-  flex: 1; text-align: left; font-size: 12px; padding: 4px 6px;
-  display: flex; gap: 6px; align-items: center;
-}
-.dp-list .badge { font-size: 9px; color: var(--muted); }
-.dp-new { display: flex; gap: 6px; margin-bottom: 8px; }
-.dp-new input { flex: 1; }
-.dp-actions { display: flex; gap: 6px; }
-.dp-actions button, .dp-new button { font-size: 11px; padding: 4px 8px; }
-
-/* chat */
-.chat { display: flex; flex-direction: column; gap: 12px; }
-.chat-thread { display: flex; flex-direction: column; gap: 12px; }
-.msg { display: flex; flex-direction: column; gap: 3px; max-width: 90%; }
-.msg-agent { align-self: flex-start; }
-.msg-user { align-self: flex-end; align-items: flex-end; }
-.msg-role { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-.msg-body {
-  background: var(--panel-2); border: 1px solid var(--border);
-  border-radius: 10px; padding: 8px 12px; white-space: pre-wrap; word-break: break-word;
-}
-.msg-user .msg-body { background: var(--accent); border-color: var(--accent); color: #fff; }
-.chat-input {
-  position: sticky; bottom: 0; display: flex; gap: 8px; padding-top: 8px;
-  background: var(--panel);
-}
-.chat-input input {
-  flex: 1; background: var(--panel-2); color: var(--text);
-  border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px;
-}
-.chat-input input:disabled { opacity: .5; }
-.chat-input button:disabled { opacity: .5; cursor: default; }
-.chat-archive[open] > summary { border-bottom: 1px solid var(--border); }
-.chat-archive .chat-thread { padding: 10px; }
-
-/* markdown preview (resposta do agente) */
-/* o .msg-body é pre-wrap pra mensagem do usuário; no markdown o espaçamento
-   quem dá é o próprio bloco, senão sobra linha em branco entre parágrafos */
-.markdown { white-space: normal; }
-/* o wrapper da tabela entra aqui e não numa regra própria: uma regra
-   .markdown .table-scroll ganharia do .markdown > :last-child e deixaria margem
-   sobrando quando a tabela fecha a mensagem */
-.markdown p, .markdown ul, .markdown ol, .markdown pre, .markdown blockquote, .markdown .table-scroll {
-  margin: 0 0 8px;
-}
-.markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 {
-  margin: 12px 0 6px; font-size: 14px; line-height: 1.3;
-}
-.markdown h1 { font-size: 16px; }
-.markdown h2 { font-size: 15px; }
-.markdown h4, .markdown h5, .markdown h6 { font-size: 13px; }
-.markdown > :first-child { margin-top: 0; }
-.markdown > :last-child { margin-bottom: 0; }
-.markdown ul, .markdown ol { padding-left: 20px; }
-.markdown li + li { margin-top: 2px; }
-.markdown li > p { margin: 0; }
-/* a checkbox do remark-gfm já é o marcador, mas o reset vai no item e não na
-   lista: o remark marca como contains-task-list toda lista que tenha uma task,
-   e zerar o padding dela achata a lista aninhada e apaga o marcador do item comum */
-.markdown .task-list-item { list-style: none; }
-.markdown .task-list-item input { margin: 0 6px 2px -20px; }
-.markdown a { color: var(--accent); }
-.markdown code {
-  background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
-  padding: 1px 4px; font-size: 12px; word-break: break-word;
-}
-/* o .drawer pre é pre-wrap/break-word pro output de execução; no bloco de código
-   a linha longa rola em vez de quebrar no meio do identificador */
-.markdown pre {
-  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
-  padding: 8px 10px; max-height: 320px; overflow: auto;
-  white-space: pre; word-break: normal; font-size: 12px;
-}
-.markdown pre code { background: none; border: 0; padding: 0; word-break: normal; overflow-wrap: normal; }
-/* o scroll fica no wrapper pra tabela larga rolar dentro da bolha em vez de
-   esticar o drawer; width max-content deixa a tabela pequena no tamanho dela */
-.markdown .table-scroll { max-width: 100%; overflow-x: auto; }
-.markdown table {
-  width: max-content; margin: 0;
-  border-collapse: collapse; font-size: 12px;
-}
-/* sem isso o break-word herdado do .msg-body derruba o min-content da coluna pra
-   um caractere: nada transborda, nada rola, e a coluna fica esmagada. o
-   overflow-wrap acompanha porque break-word equivale a normal + anywhere na
-   spec, e só o word-break não desfaz o anywhere herdado */
-.markdown th, .markdown td {
-  border: 1px solid var(--border); padding: 4px 8px; text-align: left;
-  word-break: normal; overflow-wrap: normal;
-}
-/* o break-word do .markdown code é mais específico que o da célula e ganha por
-   herança: sem isso o caminho em crase quebra no meio em vez de rolar */
-.markdown th code, .markdown td code { word-break: normal; overflow-wrap: normal; }
-.markdown th {
-  background: var(--panel); color: var(--muted); font-weight: 600;
-  font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
-}
-.markdown blockquote { border-left: 3px solid var(--border); padding-left: 10px; color: var(--muted); }
-/* o :last-child do .markdown só alcança filho direto, então o último bloco da
-   citação ficaria com a margem de baixo sobrando dentro dela */
-.markdown blockquote > :last-child { margin-bottom: 0; }
-.markdown hr { border: 0; border-top: 1px solid var(--border); margin: 12px 0; }
-.markdown img { max-width: 100%; }

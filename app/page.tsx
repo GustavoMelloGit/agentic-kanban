@@ -1,20 +1,26 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MAX_REVIEW_CYCLES, type Board } from "../lib/config";
-import { parseVerdict } from "../lib/verdict";
-import { pedirJson } from "../lib/http";
-import { semMarcadoresDeCancelamento } from "../lib/cancelamento";
-import ChatThread from "./ChatThread";
-import Markdown from "./Markdown";
-import ProjectsPanel from "./ProjectsPanel";
+import CardComposer from "@/components/molecules/CardComposer";
+import ErrorBanner from "@/components/molecules/ErrorBanner";
+import BoardColumn from "@/components/organisms/BoardColumn";
+import BoardHeader from "@/components/organisms/BoardHeader";
+import CardDrawer from "@/components/organisms/CardDrawer";
+import KanbanCard from "@/components/organisms/KanbanCard";
+import ProjectsDialog from "@/components/organisms/ProjectsDialog";
+import BoardTemplate from "@/components/templates/BoardTemplate";
+import type { Board } from "@/lib/config";
+import { pedirJson } from "@/lib/http";
 
 export default function BoardPage() {
   const [board, setBoard] = useState<Board | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  // coluna com o compositor aberto — só um por vez, como no Notion
+  const [compondoEm, setCompondoEm] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const [criando, setCriando] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [chatInput, setChatInput] = useState("");
   const [projectsOpen, setProjectsOpen] = useState(false);
@@ -30,6 +36,16 @@ export default function BoardPage() {
     cardNaTela.current = open;
   }, [open]);
 
+  // Rota de saída do drawer pelo teclado: sem isso o único jeito de fechar é
+  // achar o botão no canto. O compositor trata o próprio Esc e não chega aqui.
+  useEffect(() => {
+    const aoTeclar = (evento: KeyboardEvent) => {
+      if (evento.key === "Escape") setOpen(null);
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, []);
+
   // Live board via SSE: server pushes a fresh snapshot on every change.
   // Se a conexão cai (restart do dev server, sleep da máquina), o board da aba
   // congela e a UI fica mentindo — daí o indicador + reconexão + refetch.
@@ -44,7 +60,7 @@ export default function BoardPage() {
       setProjectId((atual) =>
         snapshot.projects.some((projeto) => projeto.id === atual)
           ? atual
-          : snapshot.projects[0]?.id ?? ""
+          : (snapshot.projects[0]?.id ?? "")
       );
     };
 
@@ -78,16 +94,15 @@ export default function BoardPage() {
     };
   }, []);
 
-  if (!board) return <div style={{ padding: 24 }}>Carregando…</div>;
+  if (!board) return <div className="p-6">Carregando…</div>;
 
   const cardsIn = (colunaId: string) => board.cards.filter((card) => card.columnId === colunaId);
 
   // Deriva do board em vez de confiar no state: se o projeto escolhido foi
-  // excluído, o <select> mostra a primeira opção enquanto o state ainda aponta
+  // excluído, o seletor mostra a primeira opção enquanto o state ainda aponta
   // pro id morto — e o card iria pro servidor com um projeto inexistente.
   const projetoSelecionado =
     board.projects.find((projeto) => projeto.id === projectId) ?? board.projects[0];
-  const semProjeto = board.projects.length === 0;
 
   async function move(id: string, toColumnId: string) {
     const card = board!.cards.find((candidato) => candidato.id === id);
@@ -172,14 +187,22 @@ export default function BoardPage() {
     setChatInput((rascunho) => (rascunho === "" ? texto : rascunho));
   }
 
-  async function addCard(evento: React.FormEvent) {
-    evento.preventDefault();
+  function abrirCompositor(columnId: string) {
     setErro(null);
+    setTitle("");
+    setCompondoEm(columnId);
+  }
 
-    if (!title.trim()) {
-      setErro("Escreva um título pro card.");
-      return;
-    }
+  function fecharCompositor() {
+    setCompondoEm(null);
+    setTitle("");
+  }
+
+  // O compositor continua aberto e vazio depois de criar: adicionar vários
+  // cards seguidos é o caso comum, e reabrir a cada card custaria um clique.
+  async function addCard(columnId: string) {
+    const texto = title.trim();
+    if (!texto || criando) return;
 
     const projetoDestino = projetoSelecionado?.id;
     if (!projetoDestino) {
@@ -187,11 +210,16 @@ export default function BoardPage() {
       return;
     }
 
+    setCriando(true);
     const resultado = await pedirJson("/api/cards", {
       method: "POST",
-      body: JSON.stringify({ title, projectId: projetoDestino }),
+      body: JSON.stringify({ title: texto, projectId: projetoDestino, columnId }),
     });
+    setCriando(false);
+
     if (!resultado.ok) {
+      // mantém o texto no campo: perder o que foi digitado por causa de uma
+      // falha de rede é pior que a mensagem de erro
       setErro(resultado.erro ?? "não foi possível criar o card");
       return;
     }
@@ -203,291 +231,88 @@ export default function BoardPage() {
   const openCard = board.cards.find((card) => card.id === open);
   const openCol = openCard
     ? board.columns.find((coluna) => coluna.id === openCard.columnId)
-    : null;
-  // Thread só com marcador de cancelamento é conversa que nunca começou — é o
-  // que o agente enxerga no prompt, então é o que o placeholder deve refletir.
-  const conversaDoCard = openCard ? semMarcadoresDeCancelamento(openCard.messages) : [];
+    : undefined;
 
   return (
-    <>
-      <header>
-        <h1>Agentic Kanban</h1>
-        <span className="hint">solte um card numa coluna auto → o agente atua</span>
-        {!live && (
-          <span className="badge status-error" title="o board pode estar desatualizado">
-            ⚠ desconectado — reconectando…
-          </span>
-        )}
-        <form className="new-card" onSubmit={addCard}>
-          <input
-            placeholder="Nova ideia…"
-            value={title}
-            onChange={(evento) => setTitle(evento.target.value)}
-            style={{ width: 200 }}
-            disabled={semProjeto}
-          />
-          <select
-            value={projetoSelecionado?.id ?? ""}
-            onChange={(evento) => setProjectId(evento.target.value)}
-            disabled={semProjeto}
-          >
-            {semProjeto && <option value="">sem projeto</option>}
-            {board.projects.map((projeto) => (
-              <option key={projeto.id} value={projeto.id}>
-                {projeto.name} · {projeto.tool}
-              </option>
-            ))}
-          </select>
-          <button type="submit" disabled={semProjeto}>
-            Adicionar
-          </button>
-          <button type="button" className="ghost" onClick={() => setProjectsOpen(true)}>
-            Projetos ({board.projects.length})
-          </button>
-        </form>
-      </header>
-
-      {erro && (
-        <p className="top-error" onClick={() => setErro(null)} title="clique pra fechar">
-          ⚠ {erro}
-        </p>
-      )}
-
-      {projectsOpen && <ProjectsPanel board={board} onClose={() => setProjectsOpen(false)} />}
-
-      <div className="board">
-        {board.columns.map((col) => (
-          <div
-            key={col.id}
-            className={`column ${dragOver === col.id ? "dragover" : ""}`}
-            onDragOver={(evento) => {
-              evento.preventDefault();
-              setDragOver(col.id);
-            }}
-            onDragLeave={() => setDragOver((atual) => (atual === col.id ? null : atual))}
-            onDrop={() => {
-              setDragOver(null);
-              if (dragId) move(dragId, col.id);
-              setDragId(null);
-            }}
-          >
-            <h2>
-              {col.name}
-              <span className={`tag ${col.type !== "manual" ? "auto" : ""}`}>
-                {col.type === "autonomous"
-                  ? `⚡ autonomous → ${col.onComplete || "—"}${
-                      col.onReject ? ` · ↩ ${col.onReject}` : ""
-                    }`
-                  : col.type === "automated"
-                  ? "🤖 automated (fica)"
-                  : col.chat
-                  ? "💬 manual · chat"
-                  : "manual"}
-              </span>
-            </h2>
-
-            {cardsIn(col.id).map((card) => {
-              const project = board.projects.find((projeto) => projeto.id === card.projectId);
-              return (
-                <div
-                  key={card.id}
-                  className="card"
-                  draggable
-                  onDragStart={() => setDragId(card.id)}
-                  onClick={() => setOpen(card.id)}
-                >
-                  <div className="title">
-                    <span>{card.title}</span>
-                    <button
-                      className="ghost remove"
-                      title="Excluir card"
-                      aria-label={`Excluir ${card.title}`}
-                      onClick={(evento) => {
-                        evento.stopPropagation();
-                        removeCard(card.id);
-                      }}
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  {card.description && <div className="desc">{card.description}</div>}
-                  <div className="meta">
-                    <span className="badge project">
-                      {project?.name} · {project?.tool}
-                    </span>
-                    <span className={`badge status-${card.status}`}>
-                      {card.status === "running" && <span className="spinner">◐</span>} {card.status}
-                    </span>
-                    {card.reviewCycles > 0 && (
-                      <span
-                        className="badge verdict-rejected"
-                        title={`Review devolveu o card ${card.reviewCycles}x (limite ${MAX_REVIEW_CYCLES})`}
-                      >
-                        ↩ {card.reviewCycles}/{MAX_REVIEW_CYCLES}
-                      </span>
-                    )}
-                  </div>
-                  {card.status === "running" ? (
-                    <div className="actions">
-                      <button
-                        className="ghost danger"
-                        disabled={cancelandoId === card.id}
-                        onClick={(evento) => {
-                          evento.stopPropagation();
-                          cancelarOperacao(card.id, !col.chat);
-                        }}
-                      >
-                        {cancelandoId === card.id ? "cancelando…" : "Cancelar operação"}
-                      </button>
-                    </div>
-                  ) : (
-                    col.type !== "manual" &&
-                    !col.chat && (
-                      <div className="actions">
-                        <button
-                          className="ghost"
-                          onClick={(evento) => {
-                            evento.stopPropagation();
-                            runNow(card.id);
-                          }}
-                        >
-                          Rodar agente de novo
-                        </button>
-                      </div>
-                    )
-                  )}
-                  {card.messages.length > 0 && (
-                    <div className="meta">
-                      <span className="badge">💬 {card.messages.length}</span>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-
-      {openCard && (
-        <div className="drawer">
-          <button className="close ghost" onClick={() => setOpen(null)}>
-            fechar
-          </button>
-          <h3>{openCard.title}</h3>
-          <p className="desc">{openCard.description}</p>
-          <div className="drawer-actions">
-            {!openCol?.chat && openCard.status === "running" && (
-              <button
-                className="ghost danger"
-                disabled={cancelandoId === openCard.id}
-                onClick={() => cancelarOperacao(openCard.id, true)}
-              >
-                {cancelandoId === openCard.id ? "cancelando…" : "Cancelar operação"}
-              </button>
-            )}
-            <button className="ghost danger" onClick={() => removeCard(openCard.id)}>
-              Excluir card
-            </button>
-          </div>
-
-          {openCol?.chat && (
-            <div className="chat">
-              {openCard.messages.length === 0 && openCard.status !== "running" && (
-                <p className="hint">
-                  {openCol.type === "manual"
-                    ? "Pergunte sobre a implementação ou peça uma mudança — o agente lê a branch do card, quando houver uma."
-                    : "A conversa começa quando o card chega aqui."}
-                </p>
-              )}
-              <ChatThread
-                messages={openCard.messages}
-                pensando={openCard.status === "running"}
+    <BoardTemplate
+      header={
+        <BoardHeader
+          live={live}
+          totalDeProjetos={board.projects.length}
+          onOpenProjects={() => setProjectsOpen(true)}
+        />
+      }
+      aviso={erro && <ErrorBanner message={erro} onDismiss={() => setErro(null)} />}
+      modais={
+        <ProjectsDialog board={board} open={projectsOpen} onOpenChange={setProjectsOpen} />
+      }
+      colunas={board.columns.map((col) => (
+        <BoardColumn
+          key={col.id}
+          col={col}
+          columns={board.columns}
+          vazia={cardsIn(col.id).length === 0}
+          arrastando={dragOver === col.id}
+          podeAdicionar={board.projects.length > 0}
+          onAdd={() => abrirCompositor(col.id)}
+          compositor={
+            compondoEm === col.id ? (
+              <CardComposer
+                column={col}
+                projects={board.projects}
+                projectId={projetoSelecionado?.id ?? ""}
+                onProjectChange={setProjectId}
+                value={title}
+                onChange={setTitle}
+                onSubmit={() => addCard(col.id)}
+                onCancel={fecharCompositor}
+                ocupado={criando}
               />
-              <form
-                className="chat-input"
-                onSubmit={(evento) => {
-                  evento.preventDefault();
-                  sendChat(openCard.id);
-                }}
-              >
-                <input
-                  placeholder={
-                    openCard.status === "running"
-                      ? "Aguarde a resposta…"
-                      : conversaDoCard.length === 0
-                      ? "Comece a conversa…"
-                      : "Responda ao agente…"
-                  }
-                  value={chatInput}
-                  onChange={(evento) => setChatInput(evento.target.value)}
-                  disabled={openCard.status === "running"}
-                />
-                {openCard.status === "running" ? (
-                  <button
-                    type="button"
-                    className="danger"
-                    disabled={cancelandoId === openCard.id}
-                    onClick={() => cancelarOperacao(openCard.id, false)}
-                  >
-                    {cancelandoId === openCard.id ? "cancelando…" : "Cancelar"}
-                  </button>
-                ) : (
-                  <button type="submit">Enviar</button>
-                )}
-              </form>
-            </div>
-          )}
-
-          {!openCol?.chat && openCard.messages.length > 0 && (
-            <details className="entry chat-archive">
-              <summary>
-                <b>💬 Conversa</b>
-                <span className="hint">{openCard.messages.length} mensagens · só leitura</span>
-              </summary>
-              <ChatThread messages={openCard.messages} pensando={false} />
-            </details>
-          )}
-
-          {(!openCol?.chat || openCard.history.length > 0) && (
-            <>
-              <h4>Histórico do agente ({openCard.history.length})</h4>
-              {openCard.history.length === 0 && <p className="hint">Nenhuma execução ainda.</p>}
-              {openCard.history
-                .slice()
-                .reverse()
-                .map((execucao, indice) => {
-                  const colunaDeVeredito = board.columns.find(
-                    (coluna) => coluna.id === execucao.column
-                  )?.verdict;
-                  const verdict = colunaDeVeredito ? parseVerdict(execucao.output) : null;
-                  return (
-                    <details className="entry" key={indice} open={indice === 0}>
-                      <summary>
-                        <b>{execucao.column}</b>
-                        {verdict && (
-                          <span
-                            className={`badge ${
-                              verdict === "APPROVE" ? "verdict-approved" : "verdict-rejected"
-                            }`}
-                          >
-                            {verdict === "APPROVE" ? "✓ APPROVE" : "↩ CHANGES_REQUESTED"}
-                          </span>
-                        )}
-                        <span className="hint">
-                          {execucao.tool ? `${execucao.tool} · ` : ""}
-                          {execucao.ok ? "ok" : "erro"} · {execucao.at}
-                        </span>
-                      </summary>
-                      <div className="entry-body">
-                        <Markdown content={execucao.output} />
-                      </div>
-                    </details>
-                  );
-                })}
-            </>
-          )}
-        </div>
-      )}
-    </>
+            ) : undefined
+          }
+          onDragOver={(evento) => {
+            evento.preventDefault();
+            setDragOver(col.id);
+          }}
+          onDragLeave={() => setDragOver((atual) => (atual === col.id ? null : atual))}
+          onDrop={() => {
+            setDragOver(null);
+            if (dragId) move(dragId, col.id);
+            setDragId(null);
+          }}
+        >
+          {cardsIn(col.id).map((card) => (
+            <KanbanCard
+              key={card.id}
+              card={card}
+              column={col}
+              project={board.projects.find((projeto) => projeto.id === card.projectId)}
+              cancelando={cancelandoId === card.id}
+              onOpen={() => setOpen(card.id)}
+              onRemove={() => removeCard(card.id)}
+              onCancel={() => cancelarOperacao(card.id, !col.chat)}
+              onRun={() => runNow(card.id)}
+              onDragStart={() => setDragId(card.id)}
+            />
+          ))}
+        </BoardColumn>
+      ))}
+      drawer={
+        openCard && (
+          <CardDrawer
+            card={openCard}
+            column={openCol}
+            columns={board.columns}
+            cancelando={cancelandoId === openCard.id}
+            chatInput={chatInput}
+            onChatInputChange={setChatInput}
+            onClose={() => setOpen(null)}
+            onCancel={(confirmar) => cancelarOperacao(openCard.id, confirmar)}
+            onRemove={() => removeCard(openCard.id)}
+            onSendChat={() => sendChat(openCard.id)}
+          />
+        )
+      }
+    />
   );
 }

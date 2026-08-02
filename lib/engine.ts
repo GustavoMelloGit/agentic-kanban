@@ -178,17 +178,22 @@ export async function moveCard(id: string, toColumnId: string, opts: { chained?:
     await limparWorktree(id, getProject(card.projectId));
   }
 
-  // autonomous + automated columns run an agent on arrival
-  if (col.type === "autonomous" || col.type === "automated") {
-    if (col.chat) {
-      // open the conversation only if the thread is empty (don't re-open on re-entry).
-      // Sem filtrar marcador de cancelamento de propósito: thread com marcador já
-      // teve abertura, e reabrir aqui responderia por cima do que o usuário parou.
-      if (getMessages(id).length === 0) startChatTurn(id);
-    } else {
-      startAgent(id, toColumnId);
-    }
+  dispararNaChegada(id, col);
+}
+
+// autonomous + automated columns run an agent on arrival — vale tanto pra card
+// que chegou movido quanto pra card criado direto na coluna.
+function dispararNaChegada(id: string, col: Column) {
+  if (col.type !== "autonomous" && col.type !== "automated") return;
+
+  if (col.chat) {
+    // open the conversation only if the thread is empty (don't re-open on re-entry).
+    // Sem filtrar marcador de cancelamento de propósito: thread com marcador já
+    // teve abertura, e reabrir aqui responderia por cima do que o usuário parou.
+    if (getMessages(id).length === 0) startChatTurn(id);
+    return;
   }
+  startAgent(id, col.id);
 }
 
 export type ResultadoDeMensagem =
@@ -553,8 +558,24 @@ async function runChatTurn(id: string) {
   if (devolverPara) await moveCard(id, devolverPara);
 }
 
-export function createCard(input: { title: string; description?: string; projectId?: string }) {
-  return storeCreateCard(input);
+// Criar já numa coluna que roda agente dispara o agente na hora — é o mesmo
+// desfecho de arrastar o card pra lá, e a UI avisa disso no compositor.
+export function createCard(input: {
+  title: string;
+  description?: string;
+  projectId?: string;
+  columnId?: string;
+}) {
+  const card = storeCreateCard(input);
+
+  const col = getColumn(card.columnId);
+  if (!col) {
+    logErro("criação de card", `card ${card.id} caiu em coluna inexistente: ${card.columnId}`);
+    return card;
+  }
+
+  dispararNaChegada(card.id, col);
+  return card;
 }
 
 // Delete a card. A running agent is killed first, so nothing writes back a

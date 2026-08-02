@@ -25,6 +25,7 @@ Trocar de ferramenta = trocar um template de comando (`lib/config.ts` → `TOOLS
 - **TypeScript** em todo o código.
 - **SQLite via Drizzle ORM** (`data/board.db`) — projetos, cards e execuções.
 - **SSE** (`/api/events`) empurra o board pro front a cada mudança (sem polling).
+- **Tailwind v4 + shadcn/ui** no front, organizados em Atomic Design.
 
 ## Rodar
 
@@ -70,6 +71,19 @@ Cada coluna tem um `type` que decide **os dois** comportamentos de uma vez:
 | AI Review     | autonomous  | → Human Review / ↩ Development (verdict)|
 | Human Review  | manual+chat | fica / ↩ Development (verdict)         |
 | Done          | manual      | —                                      |
+
+## Criar card
+
+O **+ Adicionar card** fica só na coluna marcada com `entryPoint: true`
+(**Ideas**): card novo entra pela porta da frente e segue o fluxo; as outras
+colunas se alcançam arrastando. O botão abre um compositor no formato do card
+ali mesmo (Notion/Jira): `Enter` cria e mantém o campo aberto pro próximo, `Esc`
+fecha, e o projeto é escolhido no próprio compositor.
+
+O card nasce **na coluna do compositor**. O motor aceita criar em qualquer
+coluna (`POST /api/cards` com `columnId`) e, se ela roda agente, dispara na hora
+— igual a arrastar o card pra lá. Marcar outra coluna como `entryPoint` é o que
+expõe isso na UI; o compositor então avisa antes de você apertar Enter.
 
 Solte um card em **Development** → o agente implementa no workspace do projeto →
 ao terminar move sozinho para **AI Review** → review roda → **APPROVE** para em
@@ -117,9 +131,25 @@ pedida pelo humano **não** consome ciclo de review: ela zera o contador.
   - cards: `POST /api/cards`, `DELETE /api/cards/:id`, `:id/move`, `:id/run`, `:id/message`
   - projetos: `GET|POST /api/projects`, `PATCH|DELETE /api/projects/:id`
   - pastas: `GET /api/fs?path=…` (listar), `POST /api/fs` (criar subpasta)
-- `app/page.tsx` — board (drag-and-drop, atualiza via `EventSource`)
-- `app/ProjectsPanel.tsx` — modal de CRUD de projetos (botão "Projetos" no header)
-- `app/DirPicker.tsx` — seletor de pasta do workspace
+- `app/page.tsx` — a página: estado, SSE, handlers. Não desenha nada sozinha
+- `app/globals.css` — tokens (contrato do shadcn + extensões) e o CSS do markdown
+- `lib/ui/utils.ts` — `cn()`, o merge de classe Tailwind usado por tudo em `components/`
+
+## Front em Atomic Design
+
+`app/page.tsx` só guarda estado e chama a API; a árvore visual mora em
+`components/`, em camadas que só dependem pra baixo:
+
+| Camada | Onde | O que é | Exemplos |
+|---|---|---|---|
+| **ui** | `components/ui/` | primitivas do shadcn, geradas pela CLI — não editar à mão sem motivo | `button`, `dialog`, `select`, `collapsible`, `message`, `message-scroller`, `bubble` |
+| **atoms** | `components/atoms/` | um elemento, sem regra de negócio | `Icon`, `Spinner`, `StatusBadge`, `VerdictBadge`, `RunTime`, `EmptyState`, `SkipLink`, `Markdown` |
+| **molecules** | `components/molecules/` | poucos átomos com um propósito | `CardComposer`, `AddCardTrigger`, `CardMeta`, `CardActions`, `ChatMessage`, `ChatComposer`, `ColumnHeader`, `ErrorBanner`, `ProjectRow`, `RunEntry`, `WorkspaceField`, `ConnectionStatus` |
+| **organisms** | `components/organisms/` | um bloco inteiro da tela, com estado local se precisar | `BoardHeader`, `BoardColumn`, `KanbanCard`, `CardDrawer`, `ChatThread`, `RunHistory`, `ProjectsDialog`, `DirPicker` |
+| **templates** | `components/templates/` | só o esqueleto, recebe tudo por slot | `BoardTemplate` |
+| **pages** | `app/page.tsx` | estado, dados e handlers | `BoardPage` |
+
+Identidade visual e mínimos de acessibilidade: `.claude/rules/design-system.md`.
 - `lib/fsbrowse.ts` — listagem/criação de diretórios com limite em `$HOME` + raiz do app
 
 ## Isolamento por card (worktree + branch + PR)
@@ -175,6 +205,12 @@ por outra coluna. Coluna de chat com `worktree: true` (Human
 Review) **reaproveita** a worktree do card como `cwd`, nunca cria: assim o agente
 responde lendo a branch em revisão. Card que nunca passou por Development não tem
 worktree — o chat roda no workspace e o agente diz que não há branch pra revisar.
+
+A thread usa o `message-scroller` do shadcn: o transcript é a região que rola
+(o drawer em si não rola em coluna de chat), gruda no fim enquanto você está no
+fim e solta assim que você rola pra cima, com um botão flutuante pra voltar à
+mensagem mais recente. Cada mensagem é um `Message` + `Bubble`; só a resposta do
+agente passa por markdown.
 
 A conversa segue com o card: ao entrar numa coluna de execução, a transcrição vai
 no prompt como `## Conversation with the user` — é assim que o refinamento chega

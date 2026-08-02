@@ -154,7 +154,12 @@ export function deleteCard(id: string): boolean {
   return true;
 }
 
-export function createCard(input: { title: string; description?: string; projectId?: string }): Card {
+export function createCard(input: {
+  title: string;
+  description?: string;
+  projectId?: string;
+  columnId?: string;
+}): Card {
   // Card sem projeto real nunca roda: é o projeto que define tool e workspace.
   const projeto = input.projectId
     ? getProject(input.projectId)
@@ -164,13 +169,20 @@ export function createCard(input: { title: string; description?: string; project
       input.projectId ? `projeto não encontrado: ${input.projectId}` : "nenhum projeto cadastrado"
     );
   }
+  // Coluna vem do compositor da própria coluna; um id inventado deixaria o card
+  // invisível no board, então recusa em vez de criar órfão.
+  const colunaDestino = input.columnId ?? COLUMNS[0].id;
+  if (!COLUMNS.some((coluna) => coluna.id === colunaDestino)) {
+    throw new Error(`coluna não encontrada: ${colunaDestino}`);
+  }
+
   const id = `card-${Math.floor(performance.now())}-${Math.floor(performance.now() % 1000)}`;
   const row = {
     id,
     title: input.title,
     description: input.description ?? "",
     projectId: projeto.id,
-    columnId: "ideas",
+    columnId: colunaDestino,
     status: "idle" as CardStatus,
     reviewCycles: 0,
     createdAt: new Date().toISOString(),
