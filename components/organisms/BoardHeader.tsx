@@ -16,7 +16,7 @@ export default function BoardHeader({
     <header className="bg-background relative z-30 flex h-(--header-h) items-center gap-4 border-b px-6">
       <h1 className="text-base font-semibold tracking-[-0.01em]">Agentic Kanban</h1>
       <span className="text-muted-foreground hidden text-xs xl:inline">
-        adicione um card na coluna · numa coluna auto o agente atua na hora
+        crie o card em Ideas · arraste pra uma coluna auto e o agente atua
       </span>
       <ConnectionStatus live={live} />
       <Button variant="outline" onClick={onOpenProjects} className="ml-auto">

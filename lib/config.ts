@@ -37,6 +37,10 @@ export interface Column {
   // arriving here requires an open PR for the card's branch; the engine checks
   // and records the URL — or the warning — in the card's history.
   requiresPr?: boolean;
+  // the board's entry point: only here the UI offers "+ Adicionar card". Card
+  // novo entra pela porta da frente e segue o fluxo; as outras colunas se
+  // alcançam arrastando.
+  entryPoint?: boolean;
 }
 
 export interface Project {
@@ -99,7 +103,15 @@ export const TOOLS: Record<string, Tool> = {
 
 // --- Columns ---------------------------------------------------------------
 export const COLUMNS: Column[] = [
-  { id: "ideas", name: "Ideas", type: "manual", onComplete: null, persona: "", instruction: "" },
+  {
+    id: "ideas",
+    name: "Ideas",
+    type: "manual",
+    onComplete: null,
+    entryPoint: true,
+    persona: "",
+    instruction: "",
+  },
   {
     id: "enrichment",
     name: "Enrichment",

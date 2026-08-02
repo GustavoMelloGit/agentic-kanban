@@ -49,9 +49,11 @@ export default function BoardColumn({
 
       {children}
 
-      {compositor ?? (
-        <AddCardTrigger columnName={col.name} onClick={onAdd} disabled={!podeAdicionar} />
-      )}
+      {/* só a coluna de entrada oferece criar; as outras se alcançam arrastando */}
+      {compositor ??
+        (col.entryPoint && (
+          <AddCardTrigger columnName={col.name} onClick={onAdd} disabled={!podeAdicionar} />
+        ))}
     </div>
   );
 }

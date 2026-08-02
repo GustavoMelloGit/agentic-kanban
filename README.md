@@ -74,13 +74,16 @@ Cada coluna tem um `type` que decide **os dois** comportamentos de uma vez:
 
 ## Criar card
 
-Cada coluna tem seu **+ Adicionar card**, que abre um compositor no formato do
-card ali mesmo (Notion/Jira): `Enter` cria e mantém o campo aberto pro próximo,
-`Esc` fecha, e o seletor de projeto só aparece quando há mais de um cadastrado.
+O **+ Adicionar card** fica só na coluna marcada com `entryPoint: true`
+(**Ideas**): card novo entra pela porta da frente e segue o fluxo; as outras
+colunas se alcançam arrastando. O botão abre um compositor no formato do card
+ali mesmo (Notion/Jira): `Enter` cria e mantém o campo aberto pro próximo, `Esc`
+fecha, e o projeto é escolhido no próprio compositor.
 
-O card nasce **na coluna onde você clicou** — criar direto numa coluna
-`autonomous`/`automated` dispara o agente na hora, igual a arrastar o card pra
-lá. O compositor avisa disso antes de você apertar Enter.
+O card nasce **na coluna do compositor**. O motor aceita criar em qualquer
+coluna (`POST /api/cards` com `columnId`) e, se ela roda agente, dispara na hora
+— igual a arrastar o card pra lá. Marcar outra coluna como `entryPoint` é o que
+expõe isso na UI; o compositor então avisa antes de você apertar Enter.
 
 Solte um card em **Development** → o agente implementa no workspace do projeto →
 ao terminar move sozinho para **AI Review** → review roda → **APPROVE** para em
