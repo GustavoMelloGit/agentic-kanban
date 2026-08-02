@@ -1,4 +1,5 @@
 import EmptyState from "@/components/atoms/EmptyState";
+import AddCardTrigger from "@/components/molecules/AddCardTrigger";
 import ColumnHeader from "@/components/molecules/ColumnHeader";
 import type { Column } from "@/lib/config";
 import { cn } from "@/lib/ui/utils";
@@ -7,6 +8,9 @@ export default function BoardColumn({
   col,
   vazia,
   arrastando,
+  compositor,
+  podeAdicionar,
+  onAdd,
   onDragOver,
   onDragLeave,
   onDrop,
@@ -15,6 +19,9 @@ export default function BoardColumn({
   col: Column;
   vazia: boolean;
   arrastando: boolean;
+  compositor?: React.ReactNode;
+  podeAdicionar: boolean;
+  onAdd: () => void;
   onDragOver: (evento: React.DragEvent) => void;
   onDragLeave: () => void;
   onDrop: () => void;
@@ -31,12 +38,19 @@ export default function BoardColumn({
       )}
     >
       <ColumnHeader col={col} />
-      {vazia ? (
+
+      {/* o estado vazio some assim que o compositor abre: dois convites pra
+          mesma ação, um deles já aceito, viram ruído */}
+      {vazia && !compositor && (
         <EmptyState>
           {col.type === "manual" ? "Nenhum card aqui." : "Solte um card pra o agente atuar."}
         </EmptyState>
-      ) : (
-        children
+      )}
+
+      {children}
+
+      {compositor ?? (
+        <AddCardTrigger columnName={col.name} onClick={onAdd} disabled={!podeAdicionar} />
       )}
     </div>
   );

@@ -72,6 +72,16 @@ Cada coluna tem um `type` que decide **os dois** comportamentos de uma vez:
 | Human Review  | manual      | —                                      |
 | Done          | manual      | —                                      |
 
+## Criar card
+
+Cada coluna tem seu **+ Adicionar card**, que abre um compositor no formato do
+card ali mesmo (Notion/Jira): `Enter` cria e mantém o campo aberto pro próximo,
+`Esc` fecha, e o seletor de projeto só aparece quando há mais de um cadastrado.
+
+O card nasce **na coluna onde você clicou** — criar direto numa coluna
+`autonomous`/`automated` dispara o agente na hora, igual a arrastar o card pra
+lá. O compositor avisa disso antes de você apertar Enter.
+
 Solte um card em **Development** → o agente implementa no workspace do projeto →
 ao terminar move sozinho para **AI Review** → review roda → **APPROVE** para em
 **Human Review**, **CHANGES_REQUESTED** volta pra **Development**.
@@ -123,7 +133,7 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 |---|---|---|---|
 | **ui** | `components/ui/` | primitivas do shadcn, geradas pela CLI — não editar à mão sem motivo | `button`, `dialog`, `select`, `collapsible` |
 | **atoms** | `components/atoms/` | um elemento, sem regra de negócio | `Icon`, `Spinner`, `StatusBadge`, `VerdictBadge`, `EmptyState`, `SkipLink`, `Markdown` |
-| **molecules** | `components/molecules/` | poucos átomos com um propósito | `CardMeta`, `CardActions`, `ChatMessage`, `ChatComposer`, `ColumnHeader`, `ErrorBanner`, `NewCardForm`, `ProjectRow`, `WorkspaceField`, `ConnectionStatus` |
+| **molecules** | `components/molecules/` | poucos átomos com um propósito | `CardComposer`, `AddCardTrigger`, `CardMeta`, `CardActions`, `ChatMessage`, `ChatComposer`, `ColumnHeader`, `ErrorBanner`, `ProjectRow`, `WorkspaceField`, `ConnectionStatus` |
 | **organisms** | `components/organisms/` | um bloco inteiro da tela, com estado local se precisar | `BoardHeader`, `BoardColumn`, `KanbanCard`, `CardDrawer`, `ChatThread`, `RunHistory`, `ProjectsDialog`, `DirPicker` |
 | **templates** | `components/templates/` | só o esqueleto, recebe tudo por slot | `BoardTemplate` |
 | **pages** | `app/page.tsx` | estado, dados e handlers | `BoardPage` |

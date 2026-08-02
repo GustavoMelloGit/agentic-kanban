@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import CardComposer from "@/components/molecules/CardComposer";
 import ErrorBanner from "@/components/molecules/ErrorBanner";
 import BoardColumn from "@/components/organisms/BoardColumn";
 import BoardHeader from "@/components/organisms/BoardHeader";
@@ -16,7 +17,10 @@ export default function BoardPage() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  // coluna com o compositor aberto — só um por vez, como no Notion
+  const [compondoEm, setCompondoEm] = useState<string | null>(null);
   const [title, setTitle] = useState("");
+  const [criando, setCriando] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [chatInput, setChatInput] = useState("");
   const [projectsOpen, setProjectsOpen] = useState(false);
@@ -33,7 +37,7 @@ export default function BoardPage() {
   }, [open]);
 
   // Rota de saída do drawer pelo teclado: sem isso o único jeito de fechar é
-  // achar o botão no canto.
+  // achar o botão no canto. O compositor trata o próprio Esc e não chega aqui.
   useEffect(() => {
     const aoTeclar = (evento: KeyboardEvent) => {
       if (evento.key === "Escape") setOpen(null);
@@ -183,14 +187,22 @@ export default function BoardPage() {
     setChatInput((rascunho) => (rascunho === "" ? texto : rascunho));
   }
 
-  async function addCard(evento: React.FormEvent) {
-    evento.preventDefault();
+  function abrirCompositor(columnId: string) {
     setErro(null);
+    setTitle("");
+    setCompondoEm(columnId);
+  }
 
-    if (!title.trim()) {
-      setErro("Escreva um título pro card.");
-      return;
-    }
+  function fecharCompositor() {
+    setCompondoEm(null);
+    setTitle("");
+  }
+
+  // O compositor continua aberto e vazio depois de criar: adicionar vários
+  // cards seguidos é o caso comum, e reabrir a cada card custaria um clique.
+  async function addCard(columnId: string) {
+    const texto = title.trim();
+    if (!texto || criando) return;
 
     const projetoDestino = projetoSelecionado?.id;
     if (!projetoDestino) {
@@ -198,11 +210,16 @@ export default function BoardPage() {
       return;
     }
 
+    setCriando(true);
     const resultado = await pedirJson("/api/cards", {
       method: "POST",
-      body: JSON.stringify({ title, projectId: projetoDestino }),
+      body: JSON.stringify({ title: texto, projectId: projetoDestino, columnId }),
     });
+    setCriando(false);
+
     if (!resultado.ok) {
+      // mantém o texto no campo: perder o que foi digitado por causa de uma
+      // falha de rede é pior que a mensagem de erro
       setErro(resultado.erro ?? "não foi possível criar o card");
       return;
     }
@@ -221,12 +238,7 @@ export default function BoardPage() {
       header={
         <BoardHeader
           live={live}
-          title={title}
-          onTitleChange={setTitle}
-          projects={board.projects}
-          selectedProjectId={projetoSelecionado?.id ?? ""}
-          onProjectChange={setProjectId}
-          onSubmit={addCard}
+          totalDeProjetos={board.projects.length}
           onOpenProjects={() => setProjectsOpen(true)}
         />
       }
@@ -240,6 +252,23 @@ export default function BoardPage() {
           col={col}
           vazia={cardsIn(col.id).length === 0}
           arrastando={dragOver === col.id}
+          podeAdicionar={board.projects.length > 0}
+          onAdd={() => abrirCompositor(col.id)}
+          compositor={
+            compondoEm === col.id ? (
+              <CardComposer
+                column={col}
+                projects={board.projects}
+                projectId={projetoSelecionado?.id ?? ""}
+                onProjectChange={setProjectId}
+                value={title}
+                onChange={setTitle}
+                onSubmit={() => addCard(col.id)}
+                onCancel={fecharCompositor}
+                ocupado={criando}
+              />
+            ) : undefined
+          }
           onDragOver={(evento) => {
             evento.preventDefault();
             setDragOver(col.id);
