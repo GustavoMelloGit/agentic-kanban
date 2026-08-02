@@ -1,4 +1,4 @@
-import type { ChatMessage } from "./config";
+import type { ChatMessage, RunEntry } from "./config";
 
 export type MotivoDeCancelamento = "cancelamento" | "movimentacao" | "exclusao";
 
@@ -24,11 +24,12 @@ export const MARCADORES_DE_CANCELAMENTO: Record<MotivoDeCancelamento, Marcadores
   },
 };
 
-const TEXTOS_DE_CANCELAMENTO = new Set(
-  Object.values(MARCADORES_DE_CANCELAMENTO).flatMap((marcadores) => [
-    marcadores.historico,
-    marcadores.chat,
-  ])
+const TEXTOS_NO_CHAT = new Set(
+  Object.values(MARCADORES_DE_CANCELAMENTO).map((marcadores) => marcadores.chat)
+);
+
+const TEXTOS_NO_HISTORICO = new Set(
+  Object.values(MARCADORES_DE_CANCELAMENTO).map((marcadores) => marcadores.historico)
 );
 
 // O marcador é recado pro humano, não requisito: a transcrição inteira volta no
@@ -37,5 +38,16 @@ const TEXTOS_DE_CANCELAMENTO = new Set(
 // exata — com `includes`, uma resposta legítima que cite a frase sumiria do
 // contexto.
 export function semMarcadoresDeCancelamento(mensagens: ChatMessage[]): ChatMessage[] {
-  return mensagens.filter((mensagem) => !TEXTOS_DE_CANCELAMENTO.has(mensagem.content));
+  return mensagens.filter((mensagem) => !TEXTOS_NO_CHAT.has(mensagem.content));
+}
+
+// Mesmo motivo, no outro canal: o prompt da próxima coluna replica só a última
+// entrada do histórico, então um cancelamento gravado depois de um review
+// apagaria o feedback do revisor — que é o único contexto que o dev recebe.
+export function ultimaEtapaSemCancelamento(historico: RunEntry[]): RunEntry | undefined {
+  for (let posicao = historico.length - 1; posicao >= 0; posicao--) {
+    const entrada = historico[posicao];
+    if (!TEXTOS_NO_HISTORICO.has(entrada.output)) return entrada;
+  }
+  return undefined;
 }

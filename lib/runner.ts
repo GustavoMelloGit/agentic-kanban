@@ -4,7 +4,7 @@ import fs from "node:fs";
 import type { Column, Project, Tool, RunEntry, ChatMessage } from "./config";
 import { logErro } from "./log";
 import { formatTranscript } from "./transcript";
-import { semMarcadoresDeCancelamento } from "./cancelamento";
+import { semMarcadoresDeCancelamento, ultimaEtapaSemCancelamento } from "./cancelamento";
 import type { Worktree } from "./worktree";
 
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 min safety cap per run
@@ -48,9 +48,11 @@ export function buildPrompt(
         formatTranscript(conversa)
     );
   }
-  if (card.history.length) {
-    const last = card.history[card.history.length - 1];
-    parts.push(`\n## Context from previous stage (${last.column})\n${last.output}`);
+  const etapaAnterior = ultimaEtapaSemCancelamento(card.history);
+  if (etapaAnterior) {
+    parts.push(
+      `\n## Context from previous stage (${etapaAnterior.column})\n${etapaAnterior.output}`
+    );
   }
   parts.push(`\n## Your task\n${column.instruction}`);
   return parts.join("\n");
