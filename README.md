@@ -68,16 +68,16 @@ Cada coluna tem um `type` que decide **os dois** comportamentos de uma vez:
 | Enrichment    | automated   | fica                                   |
 | Development   | autonomous  | → AI Review                            |
 | AI Review     | autonomous  | → Human Review / ↩ Development (verdict)|
-| Human Review  | manual      | —                                      |
+| Human Review  | manual+chat | fica / ↩ Development (verdict)         |
 | Done          | manual      | —                                      |
 
 Solte um card em **Development** → o agente implementa no workspace do projeto →
 ao terminar move sozinho para **AI Review** → review roda → **APPROVE** para em
 **Human Review**, **CHANGES_REQUESTED** volta pra **Development**.
 
-## Colunas de veredito (AI Review)
+## Colunas de veredito (AI Review, Human Review)
 
-Uma coluna com `verdict: true` não avança cegamente: o agente precisa abrir a
+Uma coluna com `verdict: true` não avança cegamente: o agente precisa marcar a
 saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 
 - `APPROVE` → `onComplete` (Human Review).
@@ -88,6 +88,13 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 - **Guard de loop**: `cards.reviewCycles` conta as devoluções. Ao atingir
   `MAX_REVIEW_CYCLES` (3), o card para em Human Review com um aviso no histórico.
   Qualquer movimentação manual do card zera o contador.
+
+Num run one-shot o marcador vale na primeira linha; **numa coluna de chat só vale
+na última linha não vazia do turno** (`separarVeredito`), senão o agente devolveria
+o card só por citar o formato ao explicar o fluxo. Lá o marcador é removido antes
+de virar mensagem — o thread mostra "↩ card devolvido para Development" no lugar —
+e o pedido inteiro vai pro histórico, que é o canal que o dev agent lê. Devolução
+pedida pelo humano **não** consome ciclo de review: ela zera o contador.
 
 ## Estrutura
 
@@ -116,9 +123,10 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 
 ## Isolamento por card (worktree + branch + PR)
 
-Colunas com `worktree: true` (Development e AI Review) **não** rodam o agente no
-workspace do projeto: o motor cria uma git worktree por card antes do spawn e usa
-ela como `cwd`. Dois cards em Development ao mesmo tempo não se enxergam.
+Colunas com `worktree: true` (Development, AI Review e Human Review) **não** rodam
+o agente no workspace do projeto: o motor cria uma git worktree por card antes do
+spawn e usa ela como `cwd`. Dois cards em Development ao mesmo tempo não se
+enxergam. Turno de chat só reaproveita worktree existente — quem cria é um run.
 
 - **Onde**: `.claude/worktrees/<card-id>/`, dentro do repositório do workspace.
   Fica no `.gitignore` daqui e no `.git/info/exclude` de qualquer repo apontado.
@@ -147,18 +155,26 @@ passou por uma coluna de código não tem branch, então não é cobrado.
 
 ## Colunas de chat
 
-Uma coluna com `chat: true` (ex.: Enrichment) segura uma conversa em vez de um
-run one-shot. Ao chegar o card, o agente abre a conversa; suas respostas
-(`POST /api/cards/:id/message`) disparam novos turnos. A transcrição inteira é
-reenviada a cada turno, então funciona com qualquer CLI (sem `--resume` nativo).
-As mensagens ficam na tabela `messages` e a UI mostra o thread no drawer.
+Uma coluna com `chat: true` segura uma conversa em vez de um run one-shot. Quem
+fala primeiro depende do `type`: em **Enrichment** (`automated`) o agente abre a
+conversa ao card chegar; em **Human Review** (`manual`) nada roda na chegada e
+quem começa é você. Suas respostas (`POST /api/cards/:id/message`) disparam novos
+turnos. A transcrição inteira é reenviada a cada turno, então funciona com
+qualquer CLI (sem `--resume` nativo). As mensagens ficam na tabela `messages` e a
+UI mostra o thread no drawer.
+
+O que é específico da coluna vive no `chatPrompt` dela (`briefing`, `opening`,
+`continuation`); o resto do prompt — card, transcrição, isolamento git — é
+montado pelo `buildChatPrompt`. Coluna de chat com `worktree: true` (Human
+Review) **reaproveita** a worktree do card como `cwd`, nunca cria: assim o agente
+responde lendo a branch em revisão. Card que nunca passou por Development não tem
+worktree — o chat roda no workspace e o agente diz que não há branch pra revisar.
 
 A conversa segue com o card: ao entrar numa coluna de execução, a transcrição vai
-no prompt como `## Requirements discussion (Enrichment)` — é assim que o
-refinamento chega no dev agent e no review. O drawer mostra a conversa em
-qualquer coluna (só leitura fora da coluna de chat) ao lado do histórico de runs.
-Transcrição muito longa é cortada pelo começo, porque o fim é onde mora o resumo
-dos requisitos.
+no prompt como `## Conversation with the user` — é assim que o refinamento chega
+no dev agent e no review. O drawer mostra a conversa em qualquer coluna (só
+leitura fora da coluna de chat) ao lado do histórico de runs. Transcrição muito
+longa é cortada pelo começo, porque o fim é onde mora o resumo dos requisitos.
 
 ## Próximos passos
 
