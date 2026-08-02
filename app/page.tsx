@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MAX_REVIEW_CYCLES, type Board } from "../lib/config";
 import { parseVerdict } from "../lib/verdict";
 import { pedirJson } from "../lib/http";
@@ -18,6 +18,14 @@ export default function BoardPage() {
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [live, setLive] = useState(true);
+
+  // O envio da mensagem é assíncrono e a caixa de chat é uma só pro board
+  // inteiro: sem saber qual card está na tela agora, o restore do rascunho
+  // devolveria o texto do card errado.
+  const cardNaTela = useRef<string | null>(null);
+  useEffect(() => {
+    cardNaTela.current = open;
+  }, [open]);
 
   // Live board via SSE: server pushes a fresh snapshot on every change.
   // Se a conexão cai (restart do dev server, sleep da máquina), o board da aba
@@ -139,10 +147,11 @@ export default function BoardPage() {
       method: "POST",
       body: JSON.stringify({ text: texto }),
     });
-    if (!resultado.ok) {
-      setChatInput(texto);
-      setErro(resultado.erro ?? "não foi possível enviar a mensagem");
-    }
+    if (resultado.ok) return;
+
+    setErro(resultado.erro ?? "não foi possível enviar a mensagem");
+    if (cardNaTela.current !== id) return;
+    setChatInput((rascunho) => (rascunho === "" ? texto : rascunho));
   }
 
   async function addCard(evento: React.FormEvent) {
