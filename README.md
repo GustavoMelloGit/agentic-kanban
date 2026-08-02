@@ -89,11 +89,12 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
   `MAX_REVIEW_CYCLES` (3), o card para em Human Review com um aviso no histórico.
   Qualquer movimentação manual do card zera o contador.
 
-Num run one-shot o marcador vale na primeira linha; **numa coluna de chat só vale
-na última linha não vazia do turno** (`separarVeredito`), senão o agente devolveria
-o card só por citar o formato ao explicar o fluxo. Lá o marcador é removido antes
-de virar mensagem — o thread mostra "↩ card devolvido para Development" no lugar —
-e o pedido inteiro vai pro histórico, que é o canal que o dev agent lê. Devolução
+Num run one-shot o marcador vale na primeira linha; **numa coluna de chat só
+roteia na última linha não vazia do turno** (`separarVeredito`), senão o agente
+devolveria o card só por citar o formato ao explicar o fluxo. A linha do marcador
+sai do texto onde quer que apareça — mesmo quando não roteou, ela é protocolo e
+não conversa — e o thread mostra "↩ card devolvido para Development" no lugar. O
+pedido inteiro vai pro histórico, que é o canal que o dev agent lê. Devolução
 pedida pelo humano **não** consome ciclo de review: ela zera o contador.
 
 ## Estrutura
@@ -165,7 +166,12 @@ UI mostra o thread no drawer.
 
 O que é específico da coluna vive no `chatPrompt` dela (`briefing`, `opening`,
 `continuation`); o resto do prompt — card, transcrição, isolamento git — é
-montado pelo `buildChatPrompt`. Coluna de chat com `worktree: true` (Human
+montado pelo `buildChatPrompt`. A `instruction` só entra no turno de abertura: o
+que precisa valer em todo turno mora no `briefing`/`continuation`. O thread é um
+só por card e atravessa as colunas, então o `agentLabel` decide como as falas do
+agente são rotuladas — Enrichment usa `You` porque o thread inteiro é dela; Human
+Review fica com o `Agent` neutro, já que lá os turnos anteriores foram escritos
+por outra coluna. Coluna de chat com `worktree: true` (Human
 Review) **reaproveita** a worktree do card como `cwd`, nunca cria: assim o agente
 responde lendo a branch em revisão. Card que nunca passou por Development não tem
 worktree — o chat roda no workspace e o agente diz que não há branch pra revisar.
