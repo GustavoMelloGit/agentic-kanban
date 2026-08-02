@@ -15,7 +15,7 @@ import {
 } from "./store";
 import { buildPrompt, buildChatPrompt, runTool, killTree, ensureWorkspaceDir } from "./runner";
 import { MAX_REVIEW_CYCLES, type Card, type Column, type Project } from "./config";
-import { parseVerdict } from "./verdict";
+import { parseVerdict, separarVeredito, notaDeDevolucao } from "./verdict";
 import { logErro } from "./log";
 import { textoNaoVazio } from "./texto";
 import {
@@ -237,13 +237,17 @@ export type ResultadoDeExecucao = "iniciada" | "agente-ocupado";
 
 // Redispara o agente da coluna atual fora do ciclo da requisição: a rota responde
 // na hora e o SSE empurra o desfecho. O resultado só diz se o disparo aconteceu.
+// Numa coluna de chat o redisparo é um turno de conversa: runCard ali montaria o
+// prompt de execução e gravaria a resposta no histórico, fora do thread.
 export function startRun(id: string): ResultadoDeExecucao {
   if (agenteOcupado(id)) {
     logErro("run manual", `card ${id} já tem um agente em execução; run recusado`);
     return "agente-ocupado";
   }
 
-  register(id, runCard(id));
+  const cardRow = getCardRow(id);
+  const coluna = cardRow ? getColumn(cardRow.columnId) : undefined;
+  register(id, coluna?.chat ? runChatTurn(id) : runCard(id));
   return "iniciada";
 }
 
@@ -435,6 +439,23 @@ function routeAfterRun(id: string, col: Column, output: string): string | null {
   return col.onReject;
 }
 
+const TURNO_SEM_RESPOSTA = "⚠ O agente encerrou o turno sem escrever nada.";
+
+// A conversa reaproveita a worktree que o card já tem — nunca cria. Card que
+// chegou na revisão sem passar por Development não tem branch pra ler: o chat
+// roda no workspace do projeto, degradado mas funcional.
+async function worktreeParaConversa(id: string, project: Project): Promise<Worktree | null> {
+  try {
+    return await worktreeExistente({
+      workspace: ensureWorkspaceDir(project.workspace),
+      cardId: id,
+    });
+  } catch (erro) {
+    logErro(`worktree da conversa do card ${id}`, erro);
+    return null;
+  }
+}
+
 // One turn of a chat column: build the transcript prompt, get the agent's reply,
 // store it as an "agent" message. Shares the cancel machinery with runCard.
 async function runChatTurn(id: string) {
@@ -444,6 +465,7 @@ async function runChatTurn(id: string) {
   }
   running.add(id);
 
+  let devolverPara: string | null = null;
   try {
     const cardRow = getCardRow(id);
     if (!cardRow) {
@@ -467,17 +489,20 @@ async function runChatTurn(id: string) {
 
     setCardStatus(id, "running");
 
+    const worktree = col.worktree ? await worktreeParaConversa(id, project) : null;
+
     const cardForPrompt = {
       title: cardRow.title,
       description: cardRow.description,
       messages: board.cards.find((card) => card.id === id)?.messages ?? [],
     };
-    const prompt = buildChatPrompt(col, cardForPrompt, project);
+    const prompt = buildChatPrompt(col, cardForPrompt, project, worktree ?? undefined);
 
     const result = await runTool({
       tool,
       project,
       prompt,
+      cwd: worktree?.caminho,
       onSpawn: (child) => {
         children.set(id, child);
         if (cancelled.has(id)) killTree(child);
@@ -488,11 +513,44 @@ async function runChatTurn(id: string) {
     if (consumirCancelamento(id, col.id)) return;
 
     setCardStatus(id, result.ok ? "idle" : "error");
-    addMessage(id, "agent", result.output);
+
+    const turno = col.verdict ? separarVeredito(result.output) : null;
+    const respostaDoAgente = textoNaoVazio(turno ? turno.texto : result.output);
+    // Marcador sozinho não é pedido: sem texto acima dele o dev agent receberia
+    // um contexto vazio, então o card fica onde está.
+    const pedidoDeMudanca =
+      result.ok && turno?.verdict === "CHANGES_REQUESTED" ? respostaDoAgente : null;
+
+    if (respostaDoAgente) {
+      addMessage(id, "agent", respostaDoAgente);
+    } else {
+      logErro("turno de chat", `card ${id}: o agente encerrou o turno sem escrever resposta`);
+      addMessage(id, "agent", TURNO_SEM_RESPOSTA);
+    }
+
+    // A saída inteira, marcador incluído, é o que vai pro histórico: é dela que
+    // o dev agent recebe o pedido e é nela que a UI reconhece o veredito.
+    if (pedidoDeMudanca && col.onReject) {
+      addRun({
+        cardId: id,
+        column: col.id,
+        tool: project.tool,
+        ok: true,
+        output: result.output.slice(0, 20000),
+        at: nowStamp(),
+      });
+      addMessage(id, "agent", notaDeDevolucao(getColumn(col.onReject)?.name ?? col.onReject));
+      devolverPara = col.onReject;
+    }
   } finally {
     running.delete(id);
     children.delete(id);
   }
+
+  // Depois de soltar o lock, senão o agente da coluna de destino não sobe. Sem
+  // `chained` de propósito: a devolução saiu de uma decisão humana, então o
+  // orçamento de ciclos de review volta cheio.
+  if (devolverPara) await moveCard(id, devolverPara);
 }
 
 export function createCard(input: { title: string; description?: string; projectId?: string }) {
