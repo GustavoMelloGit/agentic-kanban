@@ -131,6 +131,19 @@ function registrarCancelamento(
   });
 }
 
+// O cancelamento vence qualquer outro desfecho do run: o usuário mandou parar,
+// então o card volta pra `idle` com o marcador em vez de terminar em `error` — e
+// o motivo sai da memória pra não contaminar a próxima execução.
+function consumirCancelamento(id: string, columnId: string, tool?: string): boolean {
+  const motivo = cancelled.get(id);
+  if (!motivo) return false;
+
+  cancelled.delete(id);
+  setCardStatus(id, "idle");
+  registrarCancelamento(id, columnId, motivo, tool);
+  return true;
+}
+
 function startAgent(id: string, columnId: string) {
   register(id, runCard(id, columnId));
 }
@@ -168,7 +181,9 @@ export async function moveCard(id: string, toColumnId: string, opts: { chained?:
   // autonomous + automated columns run an agent on arrival
   if (col.type === "autonomous" || col.type === "automated") {
     if (col.chat) {
-      // open the conversation only if the thread is empty (don't re-open on re-entry)
+      // open the conversation only if the thread is empty (don't re-open on re-entry).
+      // Sem filtrar marcador de cancelamento de propósito: thread com marcador já
+      // teve abertura, e reabrir aqui responderia por cima do que o usuário parou.
       if (getMessages(id).length === 0) startChatTurn(id);
     } else {
       startAgent(id, toColumnId);
@@ -317,6 +332,9 @@ export async function runCard(id: string, columnId?: string) {
         worktree = await prepararWorktree({ workspace, cardId: id, titulo: cardRow.title });
       } catch (erro) {
         logErro(`worktree do card ${id}`, erro);
+        // cancelar durante o preparo derruba o git: sem isso o card pararia em
+        // `error`, com a falha da worktree no lugar do desfecho que o usuário pediu
+        if (consumirCancelamento(id, col.id, project.tool)) return;
         setCardStatus(id, "error");
         addRun({
           cardId: id,
@@ -358,13 +376,7 @@ export async function runCard(id: string, columnId?: string) {
     children.delete(id);
 
     // Cancelled by the user: record it, don't error, don't chain onward.
-    const motivoDoCancelamento = cancelled.get(id);
-    if (motivoDoCancelamento) {
-      cancelled.delete(id);
-      setCardStatus(id, "idle");
-      registrarCancelamento(id, col.id, motivoDoCancelamento, project.tool);
-      return;
-    }
+    if (consumirCancelamento(id, col.id, project.tool)) return;
 
     setCardStatus(id, result.ok ? "idle" : "error");
     addRun({
@@ -473,13 +485,7 @@ async function runChatTurn(id: string) {
     });
     children.delete(id);
 
-    const motivoDoCancelamento = cancelled.get(id);
-    if (motivoDoCancelamento) {
-      cancelled.delete(id);
-      setCardStatus(id, "idle");
-      registrarCancelamento(id, col.id, motivoDoCancelamento);
-      return;
-    }
+    if (consumirCancelamento(id, col.id)) return;
 
     setCardStatus(id, result.ok ? "idle" : "error");
     addMessage(id, "agent", result.output);
