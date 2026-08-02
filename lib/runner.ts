@@ -3,6 +3,7 @@ import path from "node:path";
 import fs from "node:fs";
 import type { Column, Project, Tool, RunEntry, ChatMessage } from "./config";
 import { logErro } from "./log";
+import { formatTranscript } from "./transcript";
 
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 min safety cap per run
 
@@ -16,13 +17,21 @@ const WORKSPACE_EXPLORATION_DIRECTIVE =
 
 export function buildPrompt(
   column: Column,
-  card: { title: string; description: string; history: RunEntry[] },
+  card: { title: string; description: string; history: RunEntry[]; messages: ChatMessage[] },
   project: Project
 ): string {
   const parts: string[] = [];
   if (column.persona) parts.push(`You are ${column.persona}.`);
   parts.push(`Project: ${project.name}`);
   parts.push(`\n## Card: ${card.title}\n${card.description || "(no description)"}`);
+  if (card.messages.length) {
+    parts.push(
+      "\n## Requirements discussion (Enrichment)\n" +
+        "The user and the analyst agreed on the scope below. Treat these decisions as requirements — " +
+        "they refine the card description and, where they conflict with it, win.\n\n" +
+        formatTranscript(card.messages)
+    );
+  }
   if (card.history.length) {
     const last = card.history[card.history.length - 1];
     parts.push(`\n## Context from previous stage (${last.column})\n${last.output}`);
@@ -54,9 +63,7 @@ export function buildChatPrompt(
       `\n## Task\n${column.instruction}\n\nExplore the workspace first as instructed above, then open the conversation: give a brief, code-grounded read of the idea and your first questions.`
     );
   } else {
-    const transcript = card.messages
-      .map((mensagem) => `${mensagem.role === "user" ? "User" : "You"}: ${mensagem.content}`)
-      .join("\n\n");
+    const transcript = formatTranscript(card.messages, { rotuloDoAgente: "You" });
     parts.push(`\n## Conversation so far\n${transcript}`);
     parts.push(
       "\n## Now\nThis chat is re-spawned from scratch every turn — the transcript above is your only memory, so re-orient yourself in the workspace whenever you need to keep your answers anchored in the real code. " +

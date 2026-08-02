@@ -117,10 +117,12 @@ export async function runCard(id: string, columnId?: string) {
 
     setCardStatus(id, "running");
 
-    const cardForPrompt: Pick<Card, "title" | "description" | "history"> = {
+    const cardDoBoard = board.cards.find((card) => card.id === id);
+    const cardForPrompt: Pick<Card, "title" | "description" | "history" | "messages"> = {
       title: cardRow.title,
       description: cardRow.description,
-      history: board.cards.find((card) => card.id === id)?.history ?? [],
+      history: cardDoBoard?.history ?? [],
+      messages: cardDoBoard?.messages ?? [],
     };
     const prompt = buildPrompt(col, cardForPrompt, project);
 
