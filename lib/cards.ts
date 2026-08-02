@@ -5,12 +5,23 @@ export type CardFields = Partial<Pick<Card, "title" | "description">>;
 
 export type Validated = { error: string } | { fields: CardFields };
 
+const CAMPOS_EDITAVEIS = new Set(["title", "description"]);
+
 // `parcial: true` (PATCH) valida só os campos presentes; false (POST) exige o título.
 export function validateCard(body: Record<string, unknown>, parcial: boolean): Validated {
-  // A worktree do card mora dentro do repo do workspace do projeto, e a remoção
-  // usa o projeto que o card tem na hora: trocar deixaria a worktree órfã.
-  if (parcial && body.projectId !== undefined) {
-    return { error: "o projeto de um card não pode ser alterado" };
+  if (parcial) {
+    if (Array.isArray(body)) return { error: "o corpo deve ser um objeto" };
+
+    // A worktree do card mora dentro do repo do workspace do projeto, e a remoção
+    // usa o projeto que o card tem na hora: trocar deixaria a worktree órfã.
+    if (body.projectId !== undefined) {
+      return { error: "o projeto de um card não pode ser alterado" };
+    }
+
+    // Coluna, status e ciclos de review são do motor. Recusar em vez de ignorar:
+    // um 200 calado faz o cliente acreditar que a escrita valeu.
+    const naoEditavel = Object.keys(body).find((campo) => !CAMPOS_EDITAVEIS.has(campo));
+    if (naoEditavel) return { error: `campo não editável: ${naoEditavel}` };
   }
 
   const fields: CardFields = {};
