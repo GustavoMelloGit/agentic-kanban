@@ -9,6 +9,9 @@ import Markdown from "./Markdown";
 import ProjectsPanel from "./ProjectsPanel";
 
 type CardDraft = Pick<Card, "title" | "description">;
+// O rascunho carrega o dono: resetar por efeito ao trocar de card só roda depois
+// do paint, e o drawer do card novo pisca com o texto do anterior.
+type CardDraftDono = CardDraft & { cardId: string };
 
 export default function BoardPage() {
   const [board, setBoard] = useState<Board | null>(null);
@@ -18,7 +21,7 @@ export default function BoardPage() {
   const [title, setTitle] = useState("");
   const [projectId, setProjectId] = useState("");
   const [chatInput, setChatInput] = useState("");
-  const [cardDraft, setCardDraft] = useState<CardDraft | null>(null);
+  const [cardDraft, setCardDraft] = useState<CardDraftDono | null>(null);
   const [erroDaEdicao, setErroDaEdicao] = useState<string | null>(null);
   const [salvandoCard, setSalvandoCard] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
@@ -33,9 +36,8 @@ export default function BoardPage() {
     cardNaTela.current = open;
   }, [open]);
 
-  // O rascunho de edição pertence ao card aberto; abrir outro começa limpo.
+  // O erro é do card que estava aberto; abrir outro começa limpo.
   useEffect(() => {
-    setCardDraft(null);
     setErroDaEdicao(null);
   }, [open]);
 
@@ -151,18 +153,22 @@ export default function BoardPage() {
   }
 
   const draftDoCard = (card: Card): CardDraft =>
-    cardDraft ?? { title: card.title, description: card.description };
+    cardDraft?.cardId === card.id
+      ? cardDraft
+      : { title: card.title, description: card.description };
 
-  const edicaoSuja = (card: Card) =>
-    !!cardDraft && (cardDraft.title !== card.title || cardDraft.description !== card.description);
+  const edicaoSuja = (card: Card) => {
+    const draft = draftDoCard(card);
+    return draft.title !== card.title || draft.description !== card.description;
+  };
 
   function editarCard(card: Card, patch: Partial<CardDraft>) {
-    setCardDraft({ ...draftDoCard(card), ...patch });
+    setCardDraft({ ...draftDoCard(card), ...patch, cardId: card.id });
   }
 
   async function salvarCard(card: Card) {
-    const draft = draftDoCard(card);
-    if (!draft.title.trim()) {
+    const { title: tituloEditado, description: descricaoEditada } = draftDoCard(card);
+    if (!tituloEditado.trim()) {
       setErroDaEdicao("Escreva um título pro card.");
       return;
     }
@@ -171,18 +177,19 @@ export default function BoardPage() {
     setErroDaEdicao(null);
     const resultado = await pedirJson(`/api/cards/${card.id}`, {
       method: "PATCH",
-      body: JSON.stringify(draft),
+      body: JSON.stringify({ title: tituloEditado, description: descricaoEditada }),
     });
     setSalvandoCard(false);
 
-    // o drawer pode ter trocado de card durante o PATCH: o erro e o rascunho
-    // são do card que foi salvo, não do que está na tela agora
-    if (cardNaTela.current !== card.id) return;
     if (!resultado.ok) {
-      setErroDaEdicao(resultado.erro ?? "não foi possível salvar o card");
+      // o drawer pode ter trocado de card durante o PATCH: o erro é do card que
+      // foi salvo, não do que está na tela agora
+      if (cardNaTela.current === card.id) {
+        setErroDaEdicao(resultado.erro ?? "não foi possível salvar o card");
+      }
       return;
     }
-    setCardDraft(null);
+    setCardDraft((atual) => (atual?.cardId === card.id ? null : atual));
   }
 
   async function sendChat(id: string) {
@@ -388,7 +395,7 @@ export default function BoardPage() {
               aria-label="Título do card"
               value={draftDoCard(openCard).title}
               onChange={(evento) => editarCard(openCard, { title: evento.target.value })}
-              disabled={agenteAtuando}
+              disabled={agenteAtuando || salvandoCard}
             />
             <textarea
               aria-label="Descrição do card"
@@ -396,7 +403,7 @@ export default function BoardPage() {
               rows={5}
               value={draftDoCard(openCard).description}
               onChange={(evento) => editarCard(openCard, { description: evento.target.value })}
-              disabled={agenteAtuando}
+              disabled={agenteAtuando || salvandoCard}
             />
             {agenteAtuando && (
               <p className="hint">
