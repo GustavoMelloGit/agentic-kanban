@@ -4,6 +4,7 @@ import fs from "node:fs";
 import type { Column, Project, Tool, RunEntry, ChatMessage } from "./config";
 import { logErro } from "./log";
 import { formatTranscript } from "./transcript";
+import { semMarcadoresDeCancelamento } from "./cancelamento";
 import type { Worktree } from "./worktree";
 
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 min safety cap per run
@@ -38,12 +39,13 @@ export function buildPrompt(
   parts.push(`Project: ${project.name}`);
   if (worktree) parts.push(gitIsolationSection(worktree));
   parts.push(`\n## Card: ${card.title}\n${card.description || "(no description)"}`);
-  if (card.messages.length) {
+  const conversa = semMarcadoresDeCancelamento(card.messages);
+  if (conversa.length) {
     parts.push(
       "\n## Requirements discussion (Enrichment)\n" +
         "The user and the analyst agreed on the scope below. Treat these decisions as requirements — " +
         "they refine the card description and, where they conflict with it, win.\n\n" +
-        formatTranscript(card.messages)
+        formatTranscript(conversa)
     );
   }
   if (card.history.length) {
@@ -72,12 +74,13 @@ export function buildChatPrompt(
   parts.push(`Project: ${project.name}`);
   parts.push(`\n## Card\n**${card.title}**\n${card.description || "(no description)"}`);
 
-  if (card.messages.length === 0) {
+  const conversa = semMarcadoresDeCancelamento(card.messages);
+  if (conversa.length === 0) {
     parts.push(
       `\n## Task\n${column.instruction}\n\nExplore the workspace first as instructed above, then open the conversation: give a brief, code-grounded read of the idea and your first questions.`
     );
   } else {
-    const transcript = formatTranscript(card.messages, { rotuloDoAgente: "You" });
+    const transcript = formatTranscript(conversa, { rotuloDoAgente: "You" });
     parts.push(`\n## Conversation so far\n${transcript}`);
     parts.push(
       "\n## Now\nThis chat is re-spawned from scratch every turn — the transcript above is your only memory, so re-orient yourself in the workspace whenever you need to keep your answers anchored in the real code. " +
