@@ -129,15 +129,21 @@ gravada no histórico — nada é apagado, e nada avança pra próxima coluna.
 - **Rodar de novo** aparece no mini-card e no detalhe do card (que é onde se lê o
   erro), em toda coluna que tem agente — incluindo as de chat (Enrichment e
   Human Review), onde o disparo refaz o último turno sem exigir uma mensagem
-  nova. Em Human Review o botão só aparece depois que a conversa começou: quem
-  fala primeiro ali é você, e sem nenhum turno não há o que refazer
-  (`podeDispararAgente`, em `lib/disparo.ts`).
+  nova. Em coluna de chat ele exige um **turno pendente**: a última fala
+  aproveitável do thread tem que ser sua (`podeDispararAgente`, em
+  `lib/disparo.ts`). "A conversa começou" não serve de critério — o thread é um só
+  pro card inteiro, então em Human Review ele já chega cheio com o refinamento, e
+  refazer aquilo responderia uma pergunta de outra coluna como se fosse seu
+  pedido. Com o thread vazio só roda a coluna que tem turno de abertura próprio:
+  em Human Review quem fala primeiro é você.
 - Com agente vivo, a única ação é **Cancelar operação**: dois agentes nunca
   atuam no mesmo card, e `POST /api/cards/:id/run` responde 409.
 - **Saída que falhou não vira contexto** (`lib/contexto.ts`): o disparo seguinte
   recebe a última etapa aproveitável — o feedback do review, não o traceback.
   No chat, a resposta que falhou fica visível na thread, marcada, e some do
-  prompt do turno novo.
+  prompt do turno novo. Turno que encerrou **sem escrever nada** conta como
+  falha mesmo com a CLI saindo em 0: quem pediu continua sem resposta, então o
+  card para em `error` e o aviso não volta como fala do agente.
 - O retry **não mexe em `reviewCycles`**: falha não gasta orçamento de review e
   destravar o card não devolve os 3 ciclos (o que arrastar de volta faz).
 - Card marcado como `running` **sem agente vivo** (restart do servidor no meio do
