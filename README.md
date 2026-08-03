@@ -127,6 +127,8 @@ pro histórico, que é o canal que o dev agent lê. Devolução pedida pelo huma
 - `lib/schema.ts` — tabelas Drizzle (projects, cards, runs, messages, meta)
 - `lib/db.ts` — conexão SQLite, criação de schema, migrações e seed inicial
 - `lib/projects.ts` — validação do CRUD de projetos (nome, tool, workspace)
+- `lib/cards.ts` — validação do corpo do card: `validateNewCard` (POST, exige título e recusa
+  `projectId`/`columnId` que não sejam texto) e `validateCardPatch` (PATCH, só título e descrição)
 - `lib/store.ts` — queries/mutations tipadas + `getBoard()`; emite mudança no bus
 - `lib/bus.ts` — event bus in-process que alimenta o SSE
 - `lib/runner.ts` — monta o prompt e faz `spawn` da CLI no workspace (ou na worktree do card)
@@ -138,7 +140,7 @@ pro histórico, que é o canal que o dev agent lê. Devolução pedida pelo huma
 - `lib/engine.ts` — mover card, disparar/cancelar agente, encadear colunas e
   rotear pelo veredito (`routeAfterRun`)
 - `app/api/*` — endpoints REST + `events` (SSE):
-  - cards: `POST /api/cards`, `DELETE /api/cards/:id`, `:id/move`, `:id/run`, `:id/message`
+  - cards: `POST /api/cards`, `PATCH|DELETE /api/cards/:id`, `:id/move`, `:id/run`, `:id/message`
   - projetos: `GET|POST /api/projects`, `PATCH|DELETE /api/projects/:id`
   - pastas: `GET /api/fs?path=…` (listar), `POST /api/fs` (criar subpasta)
 - `app/page.tsx` — a página: estado, SSE, handlers. Não desenha nada sozinha
