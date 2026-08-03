@@ -48,6 +48,7 @@ function init() {
       card_id TEXT NOT NULL,
       role TEXT NOT NULL,
       content TEXT NOT NULL,
+      ok INTEGER,
       at TEXT NOT NULL
     );
     CREATE TABLE IF NOT EXISTS meta (
@@ -57,11 +58,16 @@ function init() {
   `);
 
   // Migrações de bancos criados por um schema anterior.
-  const colunasDeCards = (
-    sqlite.prepare("PRAGMA table_info(cards)").all() as { name: string }[]
-  ).map((coluna) => coluna.name);
-  if (!colunasDeCards.includes("review_cycles")) {
+  const colunasDaTabela = (tabela: string) =>
+    (sqlite.prepare(`PRAGMA table_info(${tabela})`).all() as { name: string }[]).map(
+      (coluna) => coluna.name
+    );
+
+  if (!colunasDaTabela("cards").includes("review_cycles")) {
     sqlite.exec("ALTER TABLE cards ADD COLUMN review_cycles INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!colunasDaTabela("messages").includes("ok")) {
+    sqlite.exec("ALTER TABLE messages ADD COLUMN ok INTEGER");
   }
 
   const db = drizzle(sqlite, { schema });

@@ -27,6 +27,9 @@ export const messages = sqliteTable("messages", {
   cardId: text("card_id").notNull(),
   role: text("role").notNull(), // 'user' | 'agent'
   content: text("content").notNull(),
+  // desfecho do turno do agente; nulo na fala do usuário e nas linhas gravadas
+  // antes desta coluna existir
+  ok: integer("ok", { mode: "boolean" }),
   at: text("at").notNull(),
 });
 
