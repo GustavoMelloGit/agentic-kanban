@@ -11,9 +11,9 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
       return Response.json({ error: "card não encontrado" }, { status: 404 });
     case "coluna-sem-agente":
       return Response.json({ error: "esta coluna não tem agente pra rodar" }, { status: 409 });
-    case "sem-conversa-para-continuar":
+    case "sem-turno-para-rodar":
       return Response.json(
-        { error: "nesta coluna quem começa a conversa é você — envie uma mensagem no card" },
+        { error: "não há turno pendente pra refazer — envie uma mensagem no card" },
         { status: 409 }
       );
     case "agente-ocupado":

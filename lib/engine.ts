@@ -280,7 +280,7 @@ export type ResultadoDeExecucao =
   | "agente-ocupado"
   | "card-inexistente"
   | "coluna-sem-agente"
-  | "sem-conversa-para-continuar";
+  | "sem-turno-para-rodar";
 
 // Redispara o agente da coluna atual fora do ciclo da requisição: a rota responde
 // na hora e o SSE empurra o desfecho. O resultado só diz se o disparo aconteceu.
@@ -302,9 +302,9 @@ export function startRun(id: string): ResultadoDeExecucao {
   if (semTurnoParaRodar(coluna, getMessages(id))) {
     logErro(
       "run manual",
-      `card ${id} está em "${coluna.id}", coluna de chat sem conversa iniciada; run recusado`
+      `card ${id} está em "${coluna.id}" sem turno pendente pra refazer; run recusado`
     );
-    return "sem-conversa-para-continuar";
+    return "sem-turno-para-rodar";
   }
 
   if (agenteOcupado(id)) {
