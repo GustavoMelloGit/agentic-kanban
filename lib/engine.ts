@@ -11,6 +11,7 @@ import {
   getMessages,
   setReviewCycles,
   createCard as storeCreateCard,
+  updateCard as storeUpdateCard,
   deleteCard as storeDeleteCard,
 } from "./store";
 import { buildPrompt, buildChatPrompt, runTool, killTree, ensureWorkspaceDir } from "./runner";
@@ -598,6 +599,33 @@ export function createCard(input: {
 
   dispararNaChegada(card.id, col);
   return card;
+}
+
+export type ResultadoDeEdicao =
+  | { situacao: "editado"; card: Card }
+  | { situacao: "card-inexistente" }
+  | { situacao: "agente-ocupado" };
+
+// Com agente em atuação a edição é recusada em vez de cancelar a execução:
+// perder uma rodada de trabalho por causa de um ajuste de título sai mais caro
+// que recusar. Salvar em silêncio também não serve — o prompt já foi montado no
+// spawn e a mudança não chegaria no agente em curso.
+export function updateCard(
+  id: string,
+  fields: Partial<Pick<Card, "title" | "description">>
+): ResultadoDeEdicao {
+  if (agenteOcupado(id)) {
+    logErro("edição de card", `card ${id} tem um agente em atuação; edição recusada`);
+    return { situacao: "agente-ocupado" };
+  }
+
+  const card = storeUpdateCard(id, fields);
+  if (!card) {
+    logErro("edição de card", `card não encontrado: ${id}`);
+    return { situacao: "card-inexistente" };
+  }
+
+  return { situacao: "editado", card };
 }
 
 // Delete a card. A running agent is killed first, so nothing writes back a

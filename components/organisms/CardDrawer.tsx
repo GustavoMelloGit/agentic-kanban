@@ -7,6 +7,7 @@ import ChatThread from "@/components/organisms/ChatThread";
 import RunHistory from "@/components/organisms/RunHistory";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
 import type { Card, Column } from "@/lib/config";
 import { semMarcadoresDeCancelamento } from "@/lib/cancelamento";
 import { cn } from "@/lib/ui/utils";
@@ -20,6 +21,13 @@ export default function CardDrawer({
   cancelando,
   chatInput,
   onChatInputChange,
+  draft,
+  suja,
+  salvando,
+  erroDaEdicao,
+  onDraftChange,
+  onSalvar,
+  onDescartar,
   onClose,
   onCancel,
   onRemove,
@@ -31,6 +39,13 @@ export default function CardDrawer({
   cancelando: boolean;
   chatInput: string;
   onChatInputChange: (texto: string) => void;
+  draft: Pick<Card, "title" | "description">;
+  suja: boolean;
+  salvando: boolean;
+  erroDaEdicao: string | null;
+  onDraftChange: (patch: Partial<Pick<Card, "title" | "description">>) => void;
+  onSalvar: () => void;
+  onDescartar: () => void;
   onClose: () => void;
   onCancel: (confirmar: boolean) => void;
   onRemove: () => void;
@@ -76,8 +91,52 @@ export default function CardDrawer({
           ehChat && card.history.length > 0 && "max-h-[40%] overflow-y-auto"
         )}
       >
-        <h3 className="mt-0 mr-8 mb-1 text-base font-semibold tracking-[-0.01em]">{card.title}</h3>
-        <p className="text-muted-foreground text-[13px] whitespace-pre-wrap">{card.description}</p>
+        {/* mt-6 desce os campos pra baixo do botão "fechar", que é absoluto no
+            canto e passaria por cima da borda do primeiro deles */}
+        <div className="mt-6 flex flex-col gap-2">
+          <Input
+            aria-label="Título do card"
+            value={draft.title}
+            onChange={(evento) => onDraftChange({ title: evento.target.value })}
+            disabled={rodando || salvando}
+            className="text-base font-semibold tracking-[-0.01em]"
+          />
+          <textarea
+            aria-label="Descrição do card"
+            placeholder="Descrição — é o que o agente de desenvolvimento recebe como requisito."
+            rows={5}
+            value={draft.description}
+            onChange={(evento) => onDraftChange({ description: evento.target.value })}
+            disabled={rodando || salvando}
+            className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 w-full resize-y rounded-md border bg-transparent px-3 py-2 text-[13px] shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+          />
+
+          {rodando && (
+            <p className="text-muted-foreground text-xs">
+              Um agente está atuando neste card — a edição volta quando ele terminar.
+            </p>
+          )}
+          {erroDaEdicao && (
+            <p role="alert" className="text-danger flex items-center gap-2 text-xs">
+              <Icon name="alerta" size="md" />
+              {erroDaEdicao}
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <Button size="sm" disabled={!suja || salvando || rodando} onClick={onSalvar}>
+              {salvando ? "salvando…" : "Salvar"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!suja || salvando}
+              onClick={onDescartar}
+            >
+              Descartar
+            </Button>
+          </div>
+        </div>
 
         <div className="my-4 flex gap-2">
           {!ehChat && rodando && (

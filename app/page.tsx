@@ -9,8 +9,13 @@ import CardDrawer from "@/components/organisms/CardDrawer";
 import KanbanCard from "@/components/organisms/KanbanCard";
 import ProjectsDialog from "@/components/organisms/ProjectsDialog";
 import BoardTemplate from "@/components/templates/BoardTemplate";
-import type { Board } from "@/lib/config";
+import type { Board, Card } from "@/lib/config";
 import { pedirJson } from "@/lib/http";
+
+type CardDraft = Pick<Card, "title" | "description">;
+// O rascunho carrega o dono: resetar por efeito ao trocar de card só roda depois
+// do paint, e o drawer do card novo pisca com o texto do anterior.
+type CardDraftDono = CardDraft & { cardId: string };
 
 export default function BoardPage() {
   const [board, setBoard] = useState<Board | null>(null);
@@ -23,6 +28,9 @@ export default function BoardPage() {
   const [criando, setCriando] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [chatInput, setChatInput] = useState("");
+  const [cardDraft, setCardDraft] = useState<CardDraftDono | null>(null);
+  const [erroDaEdicao, setErroDaEdicao] = useState<string | null>(null);
+  const [salvandoCard, setSalvandoCard] = useState(false);
   const [projectsOpen, setProjectsOpen] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [live, setLive] = useState(true);
@@ -34,6 +42,11 @@ export default function BoardPage() {
   const cardNaTela = useRef<string | null>(null);
   useEffect(() => {
     cardNaTela.current = open;
+  }, [open]);
+
+  // O erro é do card que estava aberto; abrir outro começa limpo.
+  useEffect(() => {
+    setErroDaEdicao(null);
   }, [open]);
 
   // Rota de saída do drawer pelo teclado: sem isso o único jeito de fechar é
@@ -171,6 +184,46 @@ export default function BoardPage() {
     if (!resultado.ok) setErro(resultado.erro ?? "não foi possível excluir o card");
   }
 
+  const draftDoCard = (card: Card): CardDraft =>
+    cardDraft?.cardId === card.id
+      ? cardDraft
+      : { title: card.title, description: card.description };
+
+  const edicaoSuja = (card: Card) => {
+    const draft = draftDoCard(card);
+    return draft.title !== card.title || draft.description !== card.description;
+  };
+
+  function editarCard(card: Card, patch: Partial<CardDraft>) {
+    setCardDraft({ ...draftDoCard(card), ...patch, cardId: card.id });
+  }
+
+  async function salvarCard(card: Card) {
+    const { title: tituloEditado, description: descricaoEditada } = draftDoCard(card);
+    if (!tituloEditado.trim()) {
+      setErroDaEdicao("Escreva um título pro card.");
+      return;
+    }
+
+    setSalvandoCard(true);
+    setErroDaEdicao(null);
+    const resultado = await pedirJson(`/api/cards/${card.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ title: tituloEditado, description: descricaoEditada }),
+    });
+    setSalvandoCard(false);
+
+    if (!resultado.ok) {
+      // o drawer pode ter trocado de card durante o PATCH: o erro é do card que
+      // foi salvo, não do que está na tela agora
+      if (cardNaTela.current === card.id) {
+        setErroDaEdicao(resultado.erro ?? "não foi possível salvar o card");
+      }
+      return;
+    }
+    setCardDraft((atual) => (atual?.cardId === card.id ? null : atual));
+  }
+
   async function sendChat(id: string) {
     const texto = chatInput.trim();
     if (!texto) return;
@@ -306,6 +359,13 @@ export default function BoardPage() {
             cancelando={cancelandoId === openCard.id}
             chatInput={chatInput}
             onChatInputChange={setChatInput}
+            draft={draftDoCard(openCard)}
+            suja={edicaoSuja(openCard)}
+            salvando={salvandoCard}
+            erroDaEdicao={erroDaEdicao}
+            onDraftChange={(patch) => editarCard(openCard, patch)}
+            onSalvar={() => salvarCard(openCard)}
+            onDescartar={() => setCardDraft(null)}
             onClose={() => setOpen(null)}
             onCancel={(confirmar) => cancelarOperacao(openCard.id, confirmar)}
             onRemove={() => removeCard(openCard.id)}

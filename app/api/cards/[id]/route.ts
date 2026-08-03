@@ -1,4 +1,28 @@
-import { deleteCard } from "../../../../lib/engine";
+import { deleteCard, updateCard } from "../../../../lib/engine";
+import { validateCardPatch } from "../../../../lib/cards";
+import { logErro } from "../../../../lib/log";
+
+export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const checked = validateCardPatch(await req.json());
+  if ("error" in checked) {
+    logErro("edição de card", `card ${id}: ${checked.error}`);
+    return Response.json({ error: checked.error }, { status: 400 });
+  }
+
+  const resultado = updateCard(id, checked.fields);
+  switch (resultado.situacao) {
+    case "card-inexistente":
+      return Response.json({ error: "card não encontrado" }, { status: 404 });
+    case "agente-ocupado":
+      return Response.json(
+        { error: "um agente está atuando neste card — aguarde a execução terminar" },
+        { status: 409 }
+      );
+    case "editado":
+      return Response.json(resultado.card);
+  }
+}
 
 export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
