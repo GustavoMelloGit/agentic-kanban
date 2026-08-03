@@ -4,7 +4,7 @@ import fs from "node:fs";
 import { COLUMNS, type Column, type Project, type Tool, type RunEntry, type ChatMessage } from "./config";
 import { logErro } from "./log";
 import { formatTranscript } from "./transcript";
-import { semMarcadoresDeCancelamento, ultimaEtapaSemCancelamento } from "./cancelamento";
+import { mensagensParaContexto, ultimaEtapaParaContexto } from "./contexto";
 import type { Worktree } from "./worktree";
 
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 min safety cap per run
@@ -43,7 +43,7 @@ export function buildPrompt(
   parts.push(`Project: ${project.name}`);
   if (worktree) parts.push(gitIsolationSection(worktree) + COMMIT_RULE);
   parts.push(`\n## Card: ${card.title}\n${card.description || "(no description)"}`);
-  const conversa = semMarcadoresDeCancelamento(card.messages);
+  const conversa = mensagensParaContexto(card.messages);
   if (conversa.length) {
     // Rótulo neutro de propósito: o thread junta o refinamento com a conversa da
     // revisão humana, e o pedido autoritativo chega pelo histórico, não por aqui.
@@ -54,7 +54,7 @@ export function buildPrompt(
         formatTranscript(conversa)
     );
   }
-  const etapaAnterior = ultimaEtapaSemCancelamento(card.history);
+  const etapaAnterior = ultimaEtapaParaContexto(card.history);
   if (etapaAnterior) {
     parts.push(
       `\n## Context from previous stage (${nomeDaColuna(etapaAnterior.column)})\n${etapaAnterior.output}`
@@ -80,7 +80,7 @@ export function buildChatPrompt(
   if (worktree) parts.push(gitIsolationSection(worktree));
   parts.push(`\n## Card\n**${card.title}**\n${card.description || "(no description)"}`);
 
-  const conversa = semMarcadoresDeCancelamento(card.messages);
+  const conversa = mensagensParaContexto(card.messages);
   if (conversa.length === 0) {
     // A `instruction` é o turno de abertura, não protocolo de todo turno: repetir
     // ela no meio da conversa briga com a `continuation`.

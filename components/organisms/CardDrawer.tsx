@@ -14,7 +14,8 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import type { Card, Column } from "@/lib/config";
-import { semMarcadoresDeCancelamento } from "@/lib/cancelamento";
+import { mensagensParaContexto } from "@/lib/contexto";
+import { podeDispararAgente } from "@/lib/disparo";
 import { cn } from "@/lib/ui/utils";
 
 // Painel lateral, não modal: o board segue visível e utilizável atrás dele, e
@@ -36,6 +37,7 @@ export default function CardDrawer({
   onClose,
   onCancel,
   onRemove,
+  onRun,
   onSendChat,
 }: {
   card: Card;
@@ -54,14 +56,19 @@ export default function CardDrawer({
   onClose: () => void;
   onCancel: (confirmar: boolean) => void;
   onRemove: () => void;
+  onRun: () => void;
   onSendChat: () => void;
 }) {
   const [arquivoAberto, setArquivoAberto] = useState(false);
   const rodando = card.status === "running";
   const ehChat = !!column?.chat;
-  // Thread só com marcador de cancelamento é conversa que nunca começou — é o
-  // que o agente enxerga no prompt, então é o que o placeholder deve refletir.
-  const conversaReal = semMarcadoresDeCancelamento(card.messages);
+  // O detalhe é onde se lê o erro da execução, então é onde precisa dar pra
+  // rodar de novo — o mini-card sozinho obrigava a fechar o drawer pra agir.
+  const podeRedisparar = podeDispararAgente(column, card.messages) && !rodando;
+  // Thread só com marcador de cancelamento ou com uma resposta que falhou é
+  // conversa que nunca começou — é o que o agente enxerga no prompt, então é o
+  // que o placeholder deve refletir.
+  const conversaReal = mensagensParaContexto(card.messages);
   // Coluna de chat manual não dispara agente na chegada: quem abre a conversa é
   // o humano. A branch é condicional porque o card pode ter pulado Development.
   const placeholderDaConversa =
@@ -154,6 +161,12 @@ export default function CardDrawer({
         </div>
 
         <div className="my-4 flex gap-2">
+          {podeRedisparar && (
+            <Button variant="outline" onClick={onRun}>
+              <Icon name="recomecar" size="md" />
+              Rodar agente de novo
+            </Button>
+          )}
           {!ehChat && rodando && (
             <Button
               variant="outline"

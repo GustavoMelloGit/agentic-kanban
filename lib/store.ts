@@ -2,6 +2,7 @@ import { eq, asc } from "drizzle-orm";
 import { db } from "./db";
 import { cards, projects, runs, messages } from "./schema";
 import { emitChange } from "./bus";
+import { temAgenteVivo } from "./execucoes";
 import { gerarSlugUnico } from "./slug";
 import {
   TOOLS,
@@ -15,18 +16,23 @@ import {
   type RunEntry,
 } from "./config";
 
-function montarCard(
-  card: CardRow,
-  runRows: RunRow[],
-  msgRows: MessageRow[]
-): Card {
+// Execução que morreu com o processo (restart, queda) deixa o card "running" no
+// banco pra sempre, sem ninguém pra terminá-la. O card está parado numa falha, e
+// é como falha que ele precisa aparecer — senão o board oferece "cancelar" uma
+// execução que já morreu no lugar de "rodar de novo".
+function statusVisivel(id: string, status: CardStatus): CardStatus {
+  if (status !== "running" || temAgenteVivo(id)) return status;
+  return "error";
+}
+
+function montarCard(card: CardRow, runRows: RunRow[], msgRows: MessageRow[]): Card {
   return {
     id: card.id,
     title: card.title,
     description: card.description,
     projectId: card.projectId,
     columnId: card.columnId,
-    status: card.status as CardStatus,
+    status: statusVisivel(card.id, card.status as CardStatus),
     reviewCycles: card.reviewCycles,
     createdAt: card.createdAt,
     history: runRows
@@ -43,6 +49,7 @@ function montarCard(
       .map<ChatMessage>((mensagem) => ({
         role: mensagem.role as ChatMessage["role"],
         content: mensagem.content,
+        ok: mensagem.ok ?? undefined,
         at: mensagem.at,
       })),
   };
@@ -156,12 +163,20 @@ export function getMessages(cardId: string): ChatMessage[] {
     .map((mensagem) => ({
       role: mensagem.role as ChatMessage["role"],
       content: mensagem.content,
+      ok: mensagem.ok ?? undefined,
       at: mensagem.at,
     }));
 }
 
-export function addMessage(cardId: string, role: ChatMessage["role"], content: string) {
-  db.insert(messages).values({ cardId, role, content, at: new Date().toISOString() }).run();
+export function addMessage(
+  cardId: string,
+  role: ChatMessage["role"],
+  content: string,
+  ok?: boolean
+) {
+  db.insert(messages)
+    .values({ cardId, role, content, ok: ok ?? null, at: new Date().toISOString() })
+    .run();
   emitChange();
 }
 

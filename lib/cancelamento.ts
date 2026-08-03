@@ -1,5 +1,3 @@
-import type { ChatMessage, RunEntry } from "./config";
-
 export type MotivoDeCancelamento = "cancelamento" | "movimentacao" | "exclusao";
 
 interface MarcadoresDoMotivo {
@@ -32,22 +30,12 @@ const TEXTOS_NO_HISTORICO = new Set(
   Object.values(MARCADORES_DE_CANCELAMENTO).map((marcadores) => marcadores.historico)
 );
 
-// O marcador é recado pro humano, não requisito: a transcrição inteira volta no
-// prompt a cada turno e desce pro Development como escopo acordado, então o
-// agente passaria a tratar os cancelamentos como assunto do card. A comparação é
-// exata — com `includes`, uma resposta legítima que cite a frase sumiria do
-// contexto.
-export function semMarcadoresDeCancelamento(mensagens: ChatMessage[]): ChatMessage[] {
-  return mensagens.filter((mensagem) => !TEXTOS_NO_CHAT.has(mensagem.content));
+// A comparação é exata — com `includes`, uma resposta legítima que cite a frase
+// seria confundida com o marcador.
+export function ehMarcadorDeCancelamentoNoChat(conteudo: string): boolean {
+  return TEXTOS_NO_CHAT.has(conteudo);
 }
 
-// Mesmo motivo, no outro canal: o prompt da próxima coluna replica só a última
-// entrada do histórico, então um cancelamento gravado depois de um review
-// apagaria o feedback do revisor — que é o único contexto que o dev recebe.
-export function ultimaEtapaSemCancelamento(historico: RunEntry[]): RunEntry | undefined {
-  for (let posicao = historico.length - 1; posicao >= 0; posicao--) {
-    const entrada = historico[posicao];
-    if (!TEXTOS_NO_HISTORICO.has(entrada.output)) return entrada;
-  }
-  return undefined;
+export function ehMarcadorDeCancelamentoNoHistorico(saida: string): boolean {
+  return TEXTOS_NO_HISTORICO.has(saida);
 }

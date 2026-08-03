@@ -121,6 +121,35 @@ completo sem nenhum sinal de que o card não saiu da coluna. O pedido inteiro va
 pro histórico, que é o canal que o dev agent lê. Devolução pedida pelo humano
 **não** consome ciclo de review: ela zera o contador.
 
+## Quando o agente falha
+
+Run que termina em erro deixa o card parado com o **status `error`** e a saída
+gravada no histórico — nada é apagado, e nada avança pra próxima coluna.
+
+- **Rodar de novo** aparece no mini-card e no detalhe do card (que é onde se lê o
+  erro), em toda coluna que tem agente — incluindo as de chat (Enrichment e
+  Human Review), onde o disparo refaz o último turno sem exigir uma mensagem
+  nova. Em coluna de chat ele exige um **turno pendente**: a última fala
+  aproveitável do thread tem que ser sua (`podeDispararAgente`, em
+  `lib/disparo.ts`). "A conversa começou" não serve de critério — o thread é um só
+  pro card inteiro, então em Human Review ele já chega cheio com o refinamento, e
+  refazer aquilo responderia uma pergunta de outra coluna como se fosse seu
+  pedido. Com o thread vazio só roda a coluna que tem turno de abertura próprio:
+  em Human Review quem fala primeiro é você.
+- Com agente vivo, a única ação é **Cancelar operação**: dois agentes nunca
+  atuam no mesmo card, e `POST /api/cards/:id/run` responde 409.
+- **Saída que falhou não vira contexto** (`lib/contexto.ts`): o disparo seguinte
+  recebe a última etapa aproveitável — o feedback do review, não o traceback.
+  No chat, a resposta que falhou fica visível na thread, marcada, e some do
+  prompt do turno novo. Turno que encerrou **sem escrever nada** conta como
+  falha mesmo com a CLI saindo em 0: quem pediu continua sem resposta, então o
+  card para em `error` e o aviso não volta como fala do agente.
+- O retry **não mexe em `reviewCycles`**: falha não gasta orçamento de review e
+  destravar o card não devolve os 3 ciclos (o que arrastar de volta faz).
+- Card marcado como `running` **sem agente vivo** (restart do servidor no meio do
+  run) aparece como falha e oferece o retry — não é preciso cancelar uma
+  execução que já morreu, e nada é gravado como cancelamento.
+
 ## Estrutura
 
 - `lib/config.ts` — tipos do domínio + tools, colunas e seed de projetos/cards
@@ -137,6 +166,13 @@ pro histórico, que é o canal que o dev agent lê. Devolução pedida pelo huma
 - `lib/transcript.ts` — formata a transcrição do chat pro prompt, com teto rígido de
   caracteres (o marcador de corte sai do próprio orçamento)
 - `lib/texto.ts` — normaliza texto vindo do corpo da requisição (`textoNaoVazio`)
+- `lib/cancelamento.ts` — os marcadores de cancelamento e como reconhecê-los
+- `lib/contexto.ts` — o que entra no prompt como etapa anterior/conversa (fora:
+  marcador de cancelamento e saída de execução que falhou)
+- `lib/disparo.ts` — quando há agente pra (re)disparar numa coluna; o motor e a UI
+  leem o mesmo predicado
+- `lib/execucoes.ts` — quais cards têm agente vivo neste processo; é o que separa
+  "rodando" de "morreu com o servidor"
 - `lib/engine.ts` — mover card, disparar/cancelar agente, encadear colunas e
   rotear pelo veredito (`routeAfterRun`)
 - `app/api/*` — endpoints REST + `events` (SSE):

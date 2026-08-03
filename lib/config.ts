@@ -62,6 +62,14 @@ export interface Column {
   entryPoint?: boolean;
 }
 
+// Coluna manual sem chat não tem persona nem instruction: não há agente pra
+// disparar nela, nem pela chegada do card nem pelo "rodar de novo". Manual com
+// chat (Human Review) é o caso do meio: nada roda na chegada, mas cada turno da
+// conversa roda um agente — que pode falhar e precisar do "rodar de novo".
+export function colunaRodaAgente(column: Column | undefined): column is Column {
+  return !!column && (column.type !== "manual" || !!column.chat);
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -82,6 +90,9 @@ export interface RunEntry {
 export interface ChatMessage {
   role: "user" | "agent";
   content: string;
+  // desfecho do turno que produziu a mensagem: `false` marca resposta que
+  // falhou, que fica visível na thread mas não volta como contexto
+  ok?: boolean;
   at: string;
 }
 

@@ -1,8 +1,9 @@
 import Icon from "@/components/atoms/Icon";
 import { Button } from "@/components/ui/button";
 
-// Rodando, a única ação é parar; parado, só faz sentido redisparar em coluna
-// que tem agente e não é de chat.
+// Rodando, a única ação é parar — nunca dois agentes no mesmo card. Parado, o
+// redisparo vale em toda coluna que tem agente, inclusive a de chat, onde
+// refazer o último turno é a saída pra uma resposta que falhou.
 export default function CardActions({
   rodando,
   cancelando,
