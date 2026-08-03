@@ -7,6 +7,7 @@ import ChatThread from "@/components/organisms/ChatThread";
 import RunHistory from "@/components/organisms/RunHistory";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Separator } from "@/components/ui/separator";
 import type { Card, Column } from "@/lib/config";
 import { semMarcadoresDeCancelamento } from "@/lib/cancelamento";
 import { cn } from "@/lib/ui/utils";
@@ -106,6 +107,10 @@ export default function CardDrawer({
         )}
       </div>
 
+      {/* fora do bloco que rola: a linha marca onde o histórico acaba e a
+          conversa começa, e por isso não pode subir junto com o histórico */}
+      {ehChat && card.history.length > 0 && <Separator className="my-4" />}
+
       {ehChat ? (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           {card.messages.length === 0 && !rodando ? (
@@ -143,6 +148,8 @@ export default function CardDrawer({
               </CollapsibleContent>
             </Collapsible>
           )}
+
+          {card.messages.length > 0 && <Separator />}
 
           <RunHistory history={card.history} columns={columns} />
         </div>
