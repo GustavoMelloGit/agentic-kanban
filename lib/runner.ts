@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
-import type { Column, Project, Tool, RunEntry, ChatMessage } from "./config";
+import { COLUMNS, type Column, type Project, type Tool, type RunEntry, type ChatMessage } from "./config";
 import { logErro } from "./log";
 import { formatTranscript } from "./transcript";
 import { mensagensParaContexto, ultimaEtapaParaContexto } from "./contexto";
@@ -9,13 +9,14 @@ import type { Worktree } from "./worktree";
 
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 min safety cap per run
 
-// The chat is re-spawned every turn (no native session), so this directive
-// must go into every turn to keep replies anchored in the real code.
-const WORKSPACE_EXPLORATION_DIRECTIVE =
-  "You are running inside this project's workspace: the current working directory IS the project. " +
-  "Before restating the goal or asking anything, explore the workspace to understand it for real — this is read-only, do NOT modify anything. " +
-  "Read the README and any documentation, the dependency manifest (package.json or its equivalent), the folder structure, and the modules relevant to what this card asks for. " +
-  "Ground your restatement and every question in what you actually find in the code — the real stack, conventions, current state, and concrete files — never in generic assumptions.";
+// Só quem escreve código commita: a coluna de chat lê a mesma worktree e sairia
+// commitando por conta própria se herdasse esta regra.
+const COMMIT_RULE =
+  "\n- Commit as you go, in Portuguese conventional commits (`tipo(escopo): descrição`), one short phrase per commit.";
+
+const CHAT_TURN_PREAMBLE =
+  "This chat is re-spawned from scratch every turn — the transcript above is your only memory, " +
+  "so re-orient yourself in the workspace whenever you need to keep your answers anchored in the real code.";
 
 function gitIsolationSection(worktree: Worktree): string {
   return (
@@ -23,9 +24,12 @@ function gitIsolationSection(worktree: Worktree): string {
     `Your cwd is a git worktree created for this card alone, already checked out on branch \`${worktree.branch}\`, based on \`${worktree.base}\`. ` +
     `It exists so cards worked in parallel never collide in the same files.\n` +
     `- Stay in this worktree: never switch branches, never edit files outside it, never touch the main checkout.\n` +
-    `- The worktree and the branch are managed by the board — do not create or delete either.\n` +
-    `- Commit as you go, in Portuguese conventional commits (\`tipo(escopo): descrição\`), one short phrase per commit.`
+    `- The worktree and the branch are managed by the board — do not create or delete either.`
   );
+}
+
+function nomeDaColuna(id: string): string {
+  return COLUMNS.find((coluna) => coluna.id === id)?.name ?? id;
 }
 
 export function buildPrompt(
@@ -37,13 +41,15 @@ export function buildPrompt(
   const parts: string[] = [];
   if (column.persona) parts.push(`You are ${column.persona}.`);
   parts.push(`Project: ${project.name}`);
-  if (worktree) parts.push(gitIsolationSection(worktree));
+  if (worktree) parts.push(gitIsolationSection(worktree) + COMMIT_RULE);
   parts.push(`\n## Card: ${card.title}\n${card.description || "(no description)"}`);
   const conversa = mensagensParaContexto(card.messages);
   if (conversa.length) {
+    // Rótulo neutro de propósito: o thread junta o refinamento com a conversa da
+    // revisão humana, e o pedido autoritativo chega pelo histórico, não por aqui.
     parts.push(
-      "\n## Requirements discussion (Enrichment)\n" +
-        "The user and the analyst agreed on the scope below. Treat these decisions as requirements — " +
+      "\n## Conversation with the user\n" +
+        "The scope below was agreed with the user in this card's conversation. Treat these decisions as requirements — " +
         "they refine the card description and, where they conflict with it, win.\n\n" +
         formatTranscript(conversa)
     );
@@ -51,7 +57,7 @@ export function buildPrompt(
   const etapaAnterior = ultimaEtapaParaContexto(card.history);
   if (etapaAnterior) {
     parts.push(
-      `\n## Context from previous stage (${etapaAnterior.column})\n${etapaAnterior.output}`
+      `\n## Context from previous stage (${nomeDaColuna(etapaAnterior.column)})\n${etapaAnterior.output}`
     );
   }
   parts.push(`\n## Your task\n${column.instruction}`);
@@ -59,35 +65,39 @@ export function buildPrompt(
 }
 
 // Build the prompt for one turn of a chat column. The whole transcript is
-// replayed each turn so any CLI works without native session resume.
+// replayed each turn so any CLI works without native session resume. What is
+// specific to the column comes from its `chatPrompt`; the scaffolding is here.
 export function buildChatPrompt(
   column: Column,
   card: { title: string; description: string; messages: ChatMessage[] },
-  project: Project
+  project: Project,
+  worktree?: Worktree
 ): string {
   const parts: string[] = [];
   if (column.persona) parts.push(`You are ${column.persona}.`);
-  parts.push(
-    "You are refining a Kanban card through a short back-and-forth with the user. " +
-      "Ask focused questions in small batches, progressively filling the gaps. " +
-      "Keep replies concise and conversational. Do NOT write code."
-  );
-  parts.push(WORKSPACE_EXPLORATION_DIRECTIVE);
+  if (column.chatPrompt) parts.push(column.chatPrompt.briefing);
   parts.push(`Project: ${project.name}`);
+  if (worktree) parts.push(gitIsolationSection(worktree));
   parts.push(`\n## Card\n**${card.title}**\n${card.description || "(no description)"}`);
 
   const conversa = mensagensParaContexto(card.messages);
   if (conversa.length === 0) {
-    parts.push(
-      `\n## Task\n${column.instruction}\n\nExplore the workspace first as instructed above, then open the conversation: give a brief, code-grounded read of the idea and your first questions.`
-    );
+    // A `instruction` é o turno de abertura, não protocolo de todo turno: repetir
+    // ela no meio da conversa briga com a `continuation`.
+    const abertura = [
+      column.instruction && `## Task\n${column.instruction}`,
+      column.chatPrompt?.opening,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    if (abertura) parts.push(`\n${abertura}`);
   } else {
-    const transcript = formatTranscript(conversa, { rotuloDoAgente: "You" });
+    const transcript = formatTranscript(conversa, {
+      rotuloDoAgente: column.chatPrompt?.agentLabel,
+    });
     parts.push(`\n## Conversation so far\n${transcript}`);
-    parts.push(
-      "\n## Now\nThis chat is re-spawned from scratch every turn — the transcript above is your only memory, so re-orient yourself in the workspace whenever you need to keep your answers anchored in the real code. " +
-        "Respond to the user's latest message. Ask further questions if gaps remain, or — if the requirements now look complete — summarize the finalized requirements and acceptance criteria and say they're ready for development."
-    );
+    const agora = [CHAT_TURN_PREAMBLE, column.chatPrompt?.continuation].filter(Boolean).join(" ");
+    parts.push(`\n## Now\n${agora}`);
   }
   return parts.join("\n");
 }

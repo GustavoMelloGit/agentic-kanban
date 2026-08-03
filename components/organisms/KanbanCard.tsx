@@ -2,7 +2,8 @@ import Icon from "@/components/atoms/Icon";
 import CardActions from "@/components/molecules/CardActions";
 import CardMeta from "@/components/molecules/CardMeta";
 import { Button } from "@/components/ui/button";
-import { colunaRodaAgente, type Card, type Column, type Project } from "@/lib/config";
+import type { Card, Column, Project } from "@/lib/config";
+import { podeDispararAgente } from "@/lib/disparo";
 
 export default function KanbanCard({
   card,
@@ -72,7 +73,7 @@ export default function KanbanCard({
         <CardActions
           rodando={card.status === "running"}
           cancelando={cancelando}
-          podeRedisparar={colunaRodaAgente(column)}
+          podeRedisparar={podeDispararAgente(column, card.messages)}
           onCancel={onCancel}
           onRun={onRun}
         />

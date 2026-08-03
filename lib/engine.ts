@@ -11,6 +11,7 @@ import {
   getMessages,
   setReviewCycles,
   createCard as storeCreateCard,
+  updateCard as storeUpdateCard,
   deleteCard as storeDeleteCard,
 } from "./store";
 import { buildPrompt, buildChatPrompt, runTool, killTree, ensureWorkspaceDir } from "./runner";
@@ -21,8 +22,9 @@ import {
   type Column,
   type Project,
 } from "./config";
+import { semTurnoParaRodar } from "./disparo";
 import { registrarExecucao, encerrarExecucao, temAgenteVivo } from "./execucoes";
-import { parseVerdict } from "./verdict";
+import { parseVerdict, separarVeredito, notaDeDevolucao } from "./verdict";
 import { logErro } from "./log";
 import { textoNaoVazio } from "./texto";
 import {
@@ -277,7 +279,8 @@ export type ResultadoDeExecucao =
   | "iniciada"
   | "agente-ocupado"
   | "card-inexistente"
-  | "coluna-sem-agente";
+  | "coluna-sem-agente"
+  | "sem-conversa-para-continuar";
 
 // Redispara o agente da coluna atual fora do ciclo da requisição: a rota responde
 // na hora e o SSE empurra o desfecho. O resultado só diz se o disparo aconteceu.
@@ -294,6 +297,14 @@ export function startRun(id: string): ResultadoDeExecucao {
   if (!colunaRodaAgente(coluna)) {
     logErro("run manual", `card ${id} está em "${cardRow.columnId}", coluna sem agente; run recusado`);
     return "coluna-sem-agente";
+  }
+
+  if (semTurnoParaRodar(coluna, getMessages(id))) {
+    logErro(
+      "run manual",
+      `card ${id} está em "${coluna.id}", coluna de chat sem conversa iniciada; run recusado`
+    );
+    return "sem-conversa-para-continuar";
   }
 
   if (agenteOcupado(id)) {
@@ -490,6 +501,23 @@ function routeAfterRun(id: string, col: Column, output: string): string | null {
   return col.onReject;
 }
 
+const TURNO_SEM_RESPOSTA = "⚠ O agente encerrou o turno sem escrever nada.";
+
+// A conversa reaproveita a worktree que o card já tem — nunca cria. Card que
+// chegou na revisão sem passar por Development não tem branch pra ler: o chat
+// roda no workspace do projeto, degradado mas funcional.
+async function worktreeParaConversa(id: string, project: Project): Promise<Worktree | null> {
+  try {
+    return await worktreeExistente({
+      workspace: ensureWorkspaceDir(project.workspace),
+      cardId: id,
+    });
+  } catch (erro) {
+    logErro(`worktree da conversa do card ${id}`, erro);
+    return null;
+  }
+}
+
 // One turn of a chat column: build the transcript prompt, get the agent's reply,
 // store it as an "agent" message. Shares the cancel machinery with runCard.
 async function runChatTurn(id: string) {
@@ -499,6 +527,7 @@ async function runChatTurn(id: string) {
   }
   registrarExecucao(id);
 
+  let devolverPara: string | null = null;
   try {
     const cardRow = getCardRow(id);
     if (!cardRow) {
@@ -522,17 +551,20 @@ async function runChatTurn(id: string) {
 
     setCardStatus(id, "running");
 
+    const worktree = col.worktree ? await worktreeParaConversa(id, project) : null;
+
     const cardForPrompt = {
       title: cardRow.title,
       description: cardRow.description,
       messages: board.cards.find((card) => card.id === id)?.messages ?? [],
     };
-    const prompt = buildChatPrompt(col, cardForPrompt, project);
+    const prompt = buildChatPrompt(col, cardForPrompt, project, worktree ?? undefined);
 
     const result = await runTool({
       tool,
       project,
       prompt,
+      cwd: worktree?.caminho,
       onSpawn: (child) => {
         children.set(id, child);
         if (cancelled.has(id)) killTree(child);
@@ -543,14 +575,47 @@ async function runChatTurn(id: string) {
     if (consumirCancelamento(id, col.id)) return;
 
     setCardStatus(id, result.ok ? "idle" : "error");
+
+    const turno = col.verdict ? separarVeredito(result.output) : null;
+    const respostaDoAgente = textoNaoVazio(turno ? turno.texto : result.output);
+    // Marcador sozinho não é pedido: sem texto acima dele o dev agent receberia
+    // um contexto vazio, então o card fica onde está.
+    const pedidoDeMudanca =
+      result.ok && turno?.verdict === "CHANGES_REQUESTED" ? respostaDoAgente : null;
+
     // A resposta que falhou fica na thread pra quem quiser ler o que quebrou,
     // mas marcada: o turno seguinte a ignora e responde a mensagem do usuário
     // outra vez, em vez de continuar de cima de um traceback.
-    addMessage(id, "agent", result.output, result.ok);
+    if (respostaDoAgente) {
+      addMessage(id, "agent", respostaDoAgente, result.ok);
+    } else {
+      logErro("turno de chat", `card ${id}: o agente encerrou o turno sem escrever resposta`);
+      addMessage(id, "agent", TURNO_SEM_RESPOSTA, result.ok);
+    }
+
+    // A saída inteira, marcador incluído, é o que vai pro histórico: é dela que
+    // o dev agent recebe o pedido e é nela que a UI reconhece o veredito.
+    if (pedidoDeMudanca && col.onReject) {
+      addRun({
+        cardId: id,
+        column: col.id,
+        tool: project.tool,
+        ok: true,
+        output: result.output.slice(0, 20000),
+        at: nowStamp(),
+      });
+      addMessage(id, "agent", notaDeDevolucao(getColumn(col.onReject)?.name ?? col.onReject));
+      devolverPara = col.onReject;
+    }
   } finally {
     encerrarExecucao(id);
     children.delete(id);
   }
+
+  // Depois de soltar o lock, senão o agente da coluna de destino não sobe. Sem
+  // `chained` de propósito: a devolução saiu de uma decisão humana, então o
+  // orçamento de ciclos de review volta cheio.
+  if (devolverPara) await moveCard(id, devolverPara);
 }
 
 // Criar já numa coluna que roda agente dispara o agente na hora — é o mesmo
@@ -571,6 +636,33 @@ export function createCard(input: {
 
   dispararNaChegada(card.id, col);
   return card;
+}
+
+export type ResultadoDeEdicao =
+  | { situacao: "editado"; card: Card }
+  | { situacao: "card-inexistente" }
+  | { situacao: "agente-ocupado" };
+
+// Com agente em atuação a edição é recusada em vez de cancelar a execução:
+// perder uma rodada de trabalho por causa de um ajuste de título sai mais caro
+// que recusar. Salvar em silêncio também não serve — o prompt já foi montado no
+// spawn e a mudança não chegaria no agente em curso.
+export function updateCard(
+  id: string,
+  fields: Partial<Pick<Card, "title" | "description">>
+): ResultadoDeEdicao {
+  if (agenteOcupado(id)) {
+    logErro("edição de card", `card ${id} tem um agente em atuação; edição recusada`);
+    return { situacao: "agente-ocupado" };
+  }
+
+  const card = storeUpdateCard(id, fields);
+  if (!card) {
+    logErro("edição de card", `card não encontrado: ${id}`);
+    return { situacao: "card-inexistente" };
+  }
+
+  return { situacao: "editado", card };
 }
 
 // Delete a card. A running agent is killed first, so nothing writes back a

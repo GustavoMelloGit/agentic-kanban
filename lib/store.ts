@@ -25,14 +25,8 @@ function statusVisivel(id: string, status: CardStatus): CardStatus {
   return "error";
 }
 
-// Assemble the full board snapshot the UI/SSE consume.
-export function getBoard(): Board {
-  const projectRows = db.select().from(projects).all() as Project[];
-  const cardRows = db.select().from(cards).all();
-  const runRows = db.select().from(runs).orderBy(asc(runs.id)).all();
-  const msgRows = db.select().from(messages).orderBy(asc(messages.id)).all();
-
-  const cardsOut: Card[] = cardRows.map((card) => ({
+function montarCard(card: CardRow, runRows: RunRow[], msgRows: MessageRow[]): Card {
+  return {
     id: card.id,
     title: card.title,
     description: card.description,
@@ -58,7 +52,17 @@ export function getBoard(): Board {
         ok: mensagem.ok ?? undefined,
         at: mensagem.at,
       })),
-  }));
+  };
+}
+
+// Assemble the full board snapshot the UI/SSE consume.
+export function getBoard(): Board {
+  const projectRows = db.select().from(projects).all() as Project[];
+  const cardRows = db.select().from(cards).all();
+  const runRows = db.select().from(runs).orderBy(asc(runs.id)).all();
+  const msgRows = db.select().from(messages).orderBy(asc(messages.id)).all();
+
+  const cardsOut = cardRows.map((card) => montarCard(card, runRows, msgRows));
 
   return { tools: TOOLS, columns: COLUMNS, projects: projectRows, cards: cardsOut };
 }
@@ -67,8 +71,22 @@ export function getColumn(id: string): Column | undefined {
   return COLUMNS.find((coluna) => coluna.id === id);
 }
 
+export type CardRow = typeof cards.$inferSelect;
+type RunRow = typeof runs.$inferSelect;
+type MessageRow = typeof messages.$inferSelect;
+
 export function getCardRow(id: string) {
   return db.select().from(cards).where(eq(cards.id, id)).get();
+}
+
+export function getCard(id: string): Card | undefined {
+  const row = getCardRow(id);
+  if (!row) return undefined;
+  return montarCard(
+    row,
+    db.select().from(runs).where(eq(runs.cardId, id)).orderBy(asc(runs.id)).all(),
+    db.select().from(messages).where(eq(messages.cardId, id)).orderBy(asc(messages.id)).all()
+  );
 }
 
 export function getProject(id: string): Project | undefined {
@@ -209,4 +227,17 @@ export function createCard(input: {
   db.insert(cards).values(row).run();
   emitChange();
   return { ...row, history: [], messages: [] };
+}
+
+export function updateCard(
+  id: string,
+  patch: Partial<Pick<Card, "title" | "description">>
+): Card | undefined {
+  if (!getCardRow(id)) return undefined;
+  // `.set({})` estoura no drizzle, e um patch vazio não tem o que notificar.
+  if (Object.keys(patch).length > 0) {
+    db.update(cards).set(patch).where(eq(cards.id, id)).run();
+    emitChange();
+  }
+  return getCard(id);
 }

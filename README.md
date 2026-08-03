@@ -61,6 +61,13 @@ Cada coluna tem um `type` que decide **os dois** comportamentos de uma vez:
 | `automated`   | ✅ | ❌ (fica)           |
 | `manual`      | ❌ | ❌                  |
 
+`chat: true` altera as duas colunas da tabela, então a Human Review (`manual` +
+`chat` + `verdict`) foge das duas células: o agente não roda na chegada mas roda
+a cada mensagem sua, e o card sai dali quando o agente fecha o turno com
+`VERDICT: CHANGES_REQUESTED` — sempre pra trás, pro `onReject`. Detalhes em
+[Colunas de veredito](#colunas-de-veredito-ai-review-human-review) e
+[Colunas de chat](#colunas-de-chat).
+
 ## Fluxo das colunas (configurável em `lib/config.ts`)
 
 | Coluna        | type        | Ao terminar                            |
@@ -69,7 +76,7 @@ Cada coluna tem um `type` que decide **os dois** comportamentos de uma vez:
 | Enrichment    | automated   | fica                                   |
 | Development   | autonomous  | → AI Review                            |
 | AI Review     | autonomous  | → Human Review / ↩ Development (verdict)|
-| Human Review  | manual      | —                                      |
+| Human Review  | manual+chat | fica / ↩ Development (verdict)         |
 | Done          | manual      | —                                      |
 
 ## Criar card
@@ -89,9 +96,9 @@ Solte um card em **Development** → o agente implementa no workspace do projeto
 ao terminar move sozinho para **AI Review** → review roda → **APPROVE** para em
 **Human Review**, **CHANGES_REQUESTED** volta pra **Development**.
 
-## Colunas de veredito (AI Review)
+## Colunas de veredito (AI Review, Human Review)
 
-Uma coluna com `verdict: true` não avança cegamente: o agente precisa abrir a
+Uma coluna com `verdict: true` não avança cegamente: o agente precisa marcar a
 saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
 
 - `APPROVE` → `onComplete` (Human Review).
@@ -103,14 +110,28 @@ saída com `VERDICT: APPROVE` ou `VERDICT: CHANGES_REQUESTED`, e o motor roteia.
   `MAX_REVIEW_CYCLES` (3), o card para em Human Review com um aviso no histórico.
   Qualquer movimentação manual do card zera o contador.
 
+Em coluna de chat só `CHANGES_REQUESTED` roteia: `onComplete` é `null`, então
+aprovar continua sendo movimento seu, no arrasto para Done. Num run one-shot o
+marcador vale na primeira linha; **numa coluna de chat só roteia na última linha
+não vazia do turno** (`separarVeredito`), senão o agente devolveria o card só por
+citar o formato ao explicar o fluxo. Só a linha que **roteou** sai do texto, e no
+lugar dela o thread mostra "↩ card devolvido para Development": um marcador em
+qualquer outra posição fica visível, senão você leria um pedido de mudança
+completo sem nenhum sinal de que o card não saiu da coluna. O pedido inteiro vai
+pro histórico, que é o canal que o dev agent lê. Devolução pedida pelo humano
+**não** consome ciclo de review: ela zera o contador.
+
 ## Quando o agente falha
 
 Run que termina em erro deixa o card parado com o **status `error`** e a saída
 gravada no histórico — nada é apagado, e nada avança pra próxima coluna.
 
 - **Rodar de novo** aparece no mini-card e no detalhe do card (que é onde se lê o
-  erro), em toda coluna que tem agente — incluindo Enrichment, onde o disparo
-  refaz o último turno sem exigir uma mensagem nova.
+  erro), em toda coluna que tem agente — incluindo as de chat (Enrichment e
+  Human Review), onde o disparo refaz o último turno sem exigir uma mensagem
+  nova. Em Human Review o botão só aparece depois que a conversa começou: quem
+  fala primeiro ali é você, e sem nenhum turno não há o que refazer
+  (`podeDispararAgente`, em `lib/disparo.ts`).
 - Com agente vivo, a única ação é **Cancelar operação**: dois agentes nunca
   atuam no mesmo card, e `POST /api/cards/:id/run` responde 409.
 - **Saída que falhou não vira contexto** (`lib/contexto.ts`): o disparo seguinte
@@ -129,6 +150,8 @@ gravada no histórico — nada é apagado, e nada avança pra próxima coluna.
 - `lib/schema.ts` — tabelas Drizzle (projects, cards, runs, messages, meta)
 - `lib/db.ts` — conexão SQLite, criação de schema, migrações e seed inicial
 - `lib/projects.ts` — validação do CRUD de projetos (nome, tool, workspace)
+- `lib/cards.ts` — validação do corpo do card: `validateNewCard` (POST, exige título e recusa
+  `projectId`/`columnId` que não sejam texto) e `validateCardPatch` (PATCH, só título e descrição)
 - `lib/store.ts` — queries/mutations tipadas + `getBoard()`; emite mudança no bus
 - `lib/bus.ts` — event bus in-process que alimenta o SSE
 - `lib/runner.ts` — monta o prompt e faz `spawn` da CLI no workspace (ou na worktree do card)
@@ -140,12 +163,14 @@ gravada no histórico — nada é apagado, e nada avança pra próxima coluna.
 - `lib/cancelamento.ts` — os marcadores de cancelamento e como reconhecê-los
 - `lib/contexto.ts` — o que entra no prompt como etapa anterior/conversa (fora:
   marcador de cancelamento e saída de execução que falhou)
+- `lib/disparo.ts` — quando há agente pra (re)disparar numa coluna; o motor e a UI
+  leem o mesmo predicado
 - `lib/execucoes.ts` — quais cards têm agente vivo neste processo; é o que separa
   "rodando" de "morreu com o servidor"
 - `lib/engine.ts` — mover card, disparar/cancelar agente, encadear colunas e
   rotear pelo veredito (`routeAfterRun`)
 - `app/api/*` — endpoints REST + `events` (SSE):
-  - cards: `POST /api/cards`, `DELETE /api/cards/:id`, `:id/move`, `:id/run`, `:id/message`
+  - cards: `POST /api/cards`, `PATCH|DELETE /api/cards/:id`, `:id/move`, `:id/run`, `:id/message`
   - projetos: `GET|POST /api/projects`, `PATCH|DELETE /api/projects/:id`
   - pastas: `GET /api/fs?path=…` (listar), `POST /api/fs` (criar subpasta)
 - `app/page.tsx` — a página: estado, SSE, handlers. Não desenha nada sozinha
@@ -171,9 +196,10 @@ Identidade visual e mínimos de acessibilidade: `.claude/rules/design-system.md`
 
 ## Isolamento por card (worktree + branch + PR)
 
-Colunas com `worktree: true` (Development e AI Review) **não** rodam o agente no
-workspace do projeto: o motor cria uma git worktree por card antes do spawn e usa
-ela como `cwd`. Dois cards em Development ao mesmo tempo não se enxergam.
+Colunas com `worktree: true` (Development, AI Review e Human Review) **não** rodam
+o agente no workspace do projeto: o motor cria uma git worktree por card antes do
+spawn e usa ela como `cwd`. Dois cards em Development ao mesmo tempo não se
+enxergam. Turno de chat só reaproveita worktree existente — quem cria é um run.
 
 - **Onde**: `.claude/worktrees/<card-id>/`, dentro do repositório do workspace.
   Fica no `.gitignore` daqui e no `.git/info/exclude` de qualquer repo apontado.
@@ -202,11 +228,25 @@ passou por uma coluna de código não tem branch, então não é cobrado.
 
 ## Colunas de chat
 
-Uma coluna com `chat: true` (ex.: Enrichment) segura uma conversa em vez de um
-run one-shot. Ao chegar o card, o agente abre a conversa; suas respostas
-(`POST /api/cards/:id/message`) disparam novos turnos. A transcrição inteira é
-reenviada a cada turno, então funciona com qualquer CLI (sem `--resume` nativo).
-As mensagens ficam na tabela `messages` e a UI mostra o thread no drawer.
+Uma coluna com `chat: true` segura uma conversa em vez de um run one-shot. Quem
+fala primeiro depende do `type`: em **Enrichment** (`automated`) o agente abre a
+conversa ao card chegar; em **Human Review** (`manual`) nada roda na chegada e
+quem começa é você. Suas respostas (`POST /api/cards/:id/message`) disparam novos
+turnos. A transcrição inteira é reenviada a cada turno, então funciona com
+qualquer CLI (sem `--resume` nativo). As mensagens ficam na tabela `messages` e a
+UI mostra o thread no drawer.
+
+O que é específico da coluna vive no `chatPrompt` dela (`briefing`, `opening`,
+`continuation`); o resto do prompt — card, transcrição, isolamento git — é
+montado pelo `buildChatPrompt`. A `instruction` só entra no turno de abertura: o
+que precisa valer em todo turno mora no `briefing`/`continuation`. O thread é um
+só por card e atravessa as colunas, então o `agentLabel` decide como as falas do
+agente são rotuladas — Enrichment usa `You` porque o thread inteiro é dela; Human
+Review fica com o `Agent` neutro, já que lá os turnos anteriores foram escritos
+por outra coluna. Coluna de chat com `worktree: true` (Human
+Review) **reaproveita** a worktree do card como `cwd`, nunca cria: assim o agente
+responde lendo a branch em revisão. Card que nunca passou por Development não tem
+worktree — o chat roda no workspace e o agente diz que não há branch pra revisar.
 
 A thread usa o `message-scroller` do shadcn: o transcript é a região que rola
 (o drawer em si não rola em coluna de chat), gruda no fim enquanto você está no
@@ -215,11 +255,10 @@ mensagem mais recente. Cada mensagem é um `Message` + `Bubble`; só a resposta 
 agente passa por markdown.
 
 A conversa segue com o card: ao entrar numa coluna de execução, a transcrição vai
-no prompt como `## Requirements discussion (Enrichment)` — é assim que o
-refinamento chega no dev agent e no review. O drawer mostra a conversa em
-qualquer coluna (só leitura fora da coluna de chat) ao lado do histórico de runs.
-Transcrição muito longa é cortada pelo começo, porque o fim é onde mora o resumo
-dos requisitos.
+no prompt como `## Conversation with the user` — é assim que o refinamento chega
+no dev agent e no review. O drawer mostra a conversa em qualquer coluna (só
+leitura fora da coluna de chat) ao lado do histórico de runs. Transcrição muito
+longa é cortada pelo começo, porque o fim é onde mora o resumo dos requisitos.
 
 ## Próximos passos
 

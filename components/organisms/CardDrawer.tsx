@@ -7,8 +7,10 @@ import ChatThread from "@/components/organisms/ChatThread";
 import RunHistory from "@/components/organisms/RunHistory";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { colunaRodaAgente, type Card, type Column } from "@/lib/config";
+import { Input } from "@/components/ui/input";
+import type { Card, Column } from "@/lib/config";
 import { mensagensParaContexto } from "@/lib/contexto";
+import { podeDispararAgente } from "@/lib/disparo";
 import { cn } from "@/lib/ui/utils";
 
 // Painel lateral, não modal: o board segue visível e utilizável atrás dele, e
@@ -20,6 +22,13 @@ export default function CardDrawer({
   cancelando,
   chatInput,
   onChatInputChange,
+  draft,
+  suja,
+  salvando,
+  erroDaEdicao,
+  onDraftChange,
+  onSalvar,
+  onDescartar,
   onClose,
   onCancel,
   onRemove,
@@ -32,6 +41,13 @@ export default function CardDrawer({
   cancelando: boolean;
   chatInput: string;
   onChatInputChange: (texto: string) => void;
+  draft: Pick<Card, "title" | "description">;
+  suja: boolean;
+  salvando: boolean;
+  erroDaEdicao: string | null;
+  onDraftChange: (patch: Partial<Pick<Card, "title" | "description">>) => void;
+  onSalvar: () => void;
+  onDescartar: () => void;
   onClose: () => void;
   onCancel: (confirmar: boolean) => void;
   onRemove: () => void;
@@ -43,11 +59,17 @@ export default function CardDrawer({
   const ehChat = !!column?.chat;
   // O detalhe é onde se lê o erro da execução, então é onde precisa dar pra
   // rodar de novo — o mini-card sozinho obrigava a fechar o drawer pra agir.
-  const podeRedisparar = colunaRodaAgente(column) && !rodando;
+  const podeRedisparar = podeDispararAgente(column, card.messages) && !rodando;
   // Thread só com marcador de cancelamento ou com uma resposta que falhou é
   // conversa que nunca começou — é o que o agente enxerga no prompt, então é o
   // que o placeholder deve refletir.
   const conversaReal = mensagensParaContexto(card.messages);
+  // Coluna de chat manual não dispara agente na chegada: quem abre a conversa é
+  // o humano. A branch é condicional porque o card pode ter pulado Development.
+  const placeholderDaConversa =
+    column?.type === "manual"
+      ? "Pergunte sobre a implementação ou peça uma mudança — o agente lê a branch do card, quando houver uma."
+      : "A conversa começa quando o card chega aqui.";
 
   return (
     // 640px e não 560: o output do agente vem cheio de nome de branch e URL de
@@ -76,8 +98,52 @@ export default function CardDrawer({
           ehChat && card.history.length > 0 && "max-h-[40%] overflow-y-auto"
         )}
       >
-        <h3 className="mt-0 mr-8 mb-1 text-base font-semibold tracking-[-0.01em]">{card.title}</h3>
-        <p className="text-muted-foreground text-[13px] whitespace-pre-wrap">{card.description}</p>
+        {/* mt-6 desce os campos pra baixo do botão "fechar", que é absoluto no
+            canto e passaria por cima da borda do primeiro deles */}
+        <div className="mt-6 flex flex-col gap-2">
+          <Input
+            aria-label="Título do card"
+            value={draft.title}
+            onChange={(evento) => onDraftChange({ title: evento.target.value })}
+            disabled={rodando || salvando}
+            className="text-base font-semibold tracking-[-0.01em]"
+          />
+          <textarea
+            aria-label="Descrição do card"
+            placeholder="Descrição — é o que o agente de desenvolvimento recebe como requisito."
+            rows={5}
+            value={draft.description}
+            onChange={(evento) => onDraftChange({ description: evento.target.value })}
+            disabled={rodando || salvando}
+            className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 w-full resize-y rounded-md border bg-transparent px-3 py-2 text-[13px] shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
+          />
+
+          {rodando && (
+            <p className="text-muted-foreground text-xs">
+              Um agente está atuando neste card — a edição volta quando ele terminar.
+            </p>
+          )}
+          {erroDaEdicao && (
+            <p role="alert" className="text-danger flex items-center gap-2 text-xs">
+              <Icon name="alerta" size="md" />
+              {erroDaEdicao}
+            </p>
+          )}
+
+          <div className="flex gap-2">
+            <Button size="sm" disabled={!suja || salvando || rodando} onClick={onSalvar}>
+              {salvando ? "salvando…" : "Salvar"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={!suja || salvando}
+              onClick={onDescartar}
+            >
+              Descartar
+            </Button>
+          </div>
+        </div>
 
         <div className="my-4 flex gap-2">
           {podeRedisparar && (
@@ -115,9 +181,7 @@ export default function CardDrawer({
       {ehChat ? (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           {card.messages.length === 0 && !rodando ? (
-            <p className="text-muted-foreground text-xs">
-              A conversa começa quando o card chega aqui.
-            </p>
+            <p className="text-muted-foreground text-xs">{placeholderDaConversa}</p>
           ) : (
             <ChatThread messages={card.messages} pensando={rodando} />
           )}
