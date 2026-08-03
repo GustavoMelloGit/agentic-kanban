@@ -574,14 +574,20 @@ async function runChatTurn(id: string) {
 
     if (consumirCancelamento(id, col.id)) return;
 
-    setCardStatus(id, result.ok ? "idle" : "error");
-
     const turno = col.verdict ? separarVeredito(result.output) : null;
     const respostaDoAgente = textoNaoVazio(turno ? turno.texto : result.output);
+    // Turno que não escreveu nada é turno que falhou, mesmo com a CLI saindo em
+    // 0: quem pediu continua sem resposta. Sem isso o card ficaria `idle`, sem
+    // oferecer o "rodar de novo", e o placeholder entraria como fala do agente no
+    // prompt do turno seguinte.
+    const turnoRespondido = result.ok && !!respostaDoAgente;
+
+    setCardStatus(id, turnoRespondido ? "idle" : "error");
+
     // Marcador sozinho não é pedido: sem texto acima dele o dev agent receberia
     // um contexto vazio, então o card fica onde está.
     const pedidoDeMudanca =
-      result.ok && turno?.verdict === "CHANGES_REQUESTED" ? respostaDoAgente : null;
+      turnoRespondido && turno?.verdict === "CHANGES_REQUESTED" ? respostaDoAgente : null;
 
     // A resposta que falhou fica na thread pra quem quiser ler o que quebrou,
     // mas marcada: o turno seguinte a ignora e responde a mensagem do usuário
@@ -590,7 +596,7 @@ async function runChatTurn(id: string) {
       addMessage(id, "agent", respostaDoAgente, result.ok);
     } else {
       logErro("turno de chat", `card ${id}: o agente encerrou o turno sem escrever resposta`);
-      addMessage(id, "agent", TURNO_SEM_RESPOSTA, result.ok);
+      addMessage(id, "agent", TURNO_SEM_RESPOSTA, false);
     }
 
     // A saída inteira, marcador incluído, é o que vai pro histórico: é dela que
