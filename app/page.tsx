@@ -9,7 +9,7 @@ import CardDrawer from "@/components/organisms/CardDrawer";
 import KanbanCard from "@/components/organisms/KanbanCard";
 import ProjectsDialog from "@/components/organisms/ProjectsDialog";
 import BoardTemplate from "@/components/templates/BoardTemplate";
-import { validarAnexos } from "@/lib/anexos";
+import { triarAnexos } from "@/lib/anexos";
 import type { Board, Card } from "@/lib/config";
 import { pedirJson } from "@/lib/http";
 
@@ -264,16 +264,12 @@ export default function BoardPage() {
   }
 
   // Recusa na hora, antes de qualquer requisição: arquivo grande demais precisa
-  // aparecer como aviso no compositor, não sumir calado.
+  // aparecer como aviso no compositor, não sumir calado. O que passa é anexado
+  // mesmo assim — um arquivo recusado não derruba os válidos do mesmo lote.
   function anexarNoChat(novos: File[]) {
-    const juntos = [...chatArquivos, ...novos];
-    const recusa = validarAnexos(juntos);
-    if (recusa) {
-      setErroDoAnexoDoChat(recusa);
-      return;
-    }
-    setErroDoAnexoDoChat(null);
-    setChatArquivos(juntos);
+    const { aceitos, recusa } = triarAnexos(chatArquivos.length, novos);
+    setErroDoAnexoDoChat(recusa);
+    if (aceitos.length > 0) setChatArquivos((pendentes) => [...pendentes, ...aceitos]);
   }
 
   function removerAnexoDoChat(indice: number) {
@@ -282,17 +278,14 @@ export default function BoardPage() {
   }
 
   async function anexarNoCard(id: string, novos: File[]) {
-    const recusa = validarAnexos(novos);
-    if (recusa) {
-      setErroDoAnexoDoCard(recusa);
-      return;
-    }
+    const { aceitos, recusa } = triarAnexos(0, novos);
+    setErroDoAnexoDoCard(recusa);
+    if (aceitos.length === 0) return;
 
-    setErroDoAnexoDoCard(null);
     setAnexandoNoCard(true);
 
     const envio = new FormData();
-    for (const arquivo of novos) envio.append("files", arquivo);
+    for (const arquivo of aceitos) envio.append("files", arquivo);
 
     const resultado = await pedirJson(`/api/cards/${id}/attachments`, {
       method: "POST",

@@ -30,21 +30,60 @@ export function ehImagem(mime: string): boolean {
   return mime.startsWith("image/");
 }
 
-// Devolve a mensagem de recusa, ou null quando tudo passa.
+function motivoDeRecusa(arquivo: ArquivoParaValidar): string | null {
+  if (arquivo.size > LIMITE_DE_BYTES_POR_ANEXO) {
+    return `tem ${formatarTamanho(arquivo.size)} — o limite é ${formatarTamanho(LIMITE_DE_BYTES_POR_ANEXO)} por arquivo`;
+  }
+  if (arquivo.size === 0) return "está vazio";
+  return null;
+}
+
+// Devolve a mensagem de recusa, ou null quando tudo passa. É a checagem do
+// servidor: ali o lote chega pronto e recusar por inteiro é a resposta certa.
 export function validarAnexos(arquivos: ArquivoParaValidar[]): string | null {
   if (arquivos.length > LIMITE_DE_ANEXOS_POR_ENVIO) {
     return `no máximo ${LIMITE_DE_ANEXOS_POR_ENVIO} arquivos por envio`;
   }
 
-  const grandeDemais = arquivos.find((arquivo) => arquivo.size > LIMITE_DE_BYTES_POR_ANEXO);
-  if (grandeDemais) {
-    return `"${grandeDemais.name}" tem ${formatarTamanho(grandeDemais.size)} — o limite é ${formatarTamanho(LIMITE_DE_BYTES_POR_ANEXO)} por arquivo`;
+  for (const arquivo of arquivos) {
+    const motivo = motivoDeRecusa(arquivo);
+    if (motivo) return `"${arquivo.name}" ${motivo}`;
   }
 
-  const vazio = arquivos.find((arquivo) => arquivo.size === 0);
-  if (vazio) return `"${vazio.name}" está vazio`;
-
   return null;
+}
+
+export interface TriagemDeAnexos<T> {
+  aceitos: T[];
+  recusa: string | null;
+}
+
+// A checagem do compositor: separa o que entra do que foi recusado em vez de
+// descartar o lote inteiro. Soltar três arquivos onde um estoura o limite anexa
+// os outros dois e diz qual ficou de fora — nada some sem o usuário saber.
+export function triarAnexos<T extends ArquivoParaValidar>(
+  jaAnexados: number,
+  novos: readonly T[]
+): TriagemDeAnexos<T> {
+  const aceitos: T[] = [];
+  const recusados: string[] = [];
+
+  for (const arquivo of novos) {
+    const motivo = motivoDeRecusa(arquivo);
+    if (motivo) {
+      recusados.push(`"${arquivo.name}" ${motivo}`);
+      continue;
+    }
+    if (jaAnexados + aceitos.length >= LIMITE_DE_ANEXOS_POR_ENVIO) {
+      recusados.push(
+        `"${arquivo.name}" passou do limite de ${LIMITE_DE_ANEXOS_POR_ENVIO} arquivos por envio`
+      );
+      continue;
+    }
+    aceitos.push(arquivo);
+  }
+
+  return { aceitos, recusa: recusados.length > 0 ? recusados.join("; ") : null };
 }
 
 // Como o anexo aparece no prompt: caminho local primeiro, porque é o que o

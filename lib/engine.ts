@@ -54,6 +54,7 @@ const estadoGlobal = globalThis as unknown as {
   __children?: Map<string, ChildProcess>;
   __jobs?: Map<string, Promise<void>>;
   __cancelled?: Map<string, MotivoDeCancelamento>;
+  __reservados?: Set<string>;
 };
 
 const children: Map<string, ChildProcess> =
@@ -62,6 +63,11 @@ const jobs: Map<string, Promise<void>> =
   estadoGlobal.__jobs ?? (estadoGlobal.__jobs = new Map());
 const cancelled: Map<string, MotivoDeCancelamento> =
   estadoGlobal.__cancelled ?? (estadoGlobal.__cancelled = new Map());
+// Cards que já têm um disparo a caminho mas ainda não têm job: quem precisa
+// gravar em disco antes de disparar reserva o card aqui, de forma síncrona,
+// pra que a espera não abra uma janela onde um segundo envio também passa.
+const reservados: Set<string> =
+  estadoGlobal.__reservados ?? (estadoGlobal.__reservados = new Set());
 
 function nowStamp() {
   return new Date().toISOString();
@@ -84,7 +90,7 @@ function register(id: string, work: Promise<void>) {
 }
 
 function agenteOcupado(id: string): boolean {
-  return temAgenteVivo(id) || jobs.has(id);
+  return temAgenteVivo(id) || jobs.has(id) || reservados.has(id);
 }
 
 // Worktree órfã atrapalha o próximo card, mas derrubar a movimentação por causa
@@ -282,23 +288,34 @@ export async function sendMessage(
   }
 
   // A recusa vem antes da escrita em disco: gravar arquivo de uma mensagem que
-  // não vai existir deixaria anexo órfão na pasta do card.
+  // não vai existir deixaria anexo órfão na pasta do card. E a reserva vem junto,
+  // no mesmo passo síncrono: a gravação dos anexos separa este check do disparo,
+  // e sem reservar o card dois envios sobrepostos passariam os dois pelo check e
+  // rodariam dois turnos no mesmo card — o segundo sobrescreve o processo filho
+  // do primeiro, e quem terminar antes marca o card como livre com agente vivo.
   if (agenteOcupado(id)) {
     logErro("envio de mensagem", `card ${id} já tem um turno em andamento; mensagem recusada`);
     return "agente-ocupado";
   }
+  reservados.add(id);
 
-  let anexos;
   try {
-    anexos = await salvarAnexos(id, arquivos);
-  } catch (erro) {
-    logErro(`gravação dos anexos da mensagem do card ${id}`, erro);
-    return "falha-ao-salvar-anexo";
-  }
+    let anexos;
+    try {
+      anexos = await salvarAnexos(id, arquivos);
+    } catch (erro) {
+      logErro(`gravação dos anexos da mensagem do card ${id}`, erro);
+      return "falha-ao-salvar-anexo";
+    }
 
-  addMessage(id, "user", textoDaMensagem ?? "", undefined, anexos);
-  startChatTurn(id);
-  return "enviada";
+    addMessage(id, "user", textoDaMensagem ?? "", undefined, anexos);
+    startChatTurn(id);
+    return "enviada";
+  } finally {
+    // startChatTurn já registrou o job e a execução antes de devolver: a reserva
+    // sai sem deixar buraco entre um guarda e o outro.
+    reservados.delete(id);
+  }
 }
 
 export type ResultadoDeAnexo =

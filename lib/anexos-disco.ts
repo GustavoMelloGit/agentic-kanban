@@ -47,7 +47,9 @@ function nomeEmDisco(id: string, nomeOriginal: string): string {
 }
 
 // Grava tudo ou nada: um arquivo que falhou no meio deixaria anexos órfãos em
-// disco sem linha no banco pra alcançá-los depois.
+// disco sem linha no banco pra alcançá-los depois. O destino de cada arquivo é
+// decidido antes da primeira escrita justamente pra isso — o rollback precisa
+// alcançar também o arquivo truncado pela gravação que falhou.
 export async function salvarAnexos(
   cardId: string,
   arquivos: ArquivoRecebido[]
@@ -57,35 +59,34 @@ export async function salvarAnexos(
   const pasta = pastaDoCard(cardId);
   await fsp.mkdir(pasta, { recursive: true });
 
-  const resultados = await Promise.allSettled(
-    arquivos.map(async (arquivo): Promise<AnexoSalvo> => {
-      const id = randomUUID();
-      const nomeDoArquivo = nomeEmDisco(id, arquivo.nome);
-      const caminho = path.join(pasta, nomeDoArquivo);
-      await fsp.writeFile(caminho, arquivo.bytes);
-      return {
+  const gravacoes = arquivos.map((arquivo) => {
+    const id = randomUUID();
+    const nomeDoArquivo = nomeEmDisco(id, arquivo.nome);
+    return {
+      bytes: arquivo.bytes,
+      anexo: {
         id,
         nome: arquivo.nome,
         tipo: arquivo.tipo,
         tamanho: arquivo.bytes.byteLength,
         arquivo: nomeDoArquivo,
-        caminho,
-      };
-    })
-  );
+        caminho: path.join(pasta, nomeDoArquivo),
+      } satisfies AnexoSalvo,
+    };
+  });
 
-  const salvos = resultados
-    .filter((resultado): resultado is PromiseFulfilledResult<AnexoSalvo> => resultado.status === "fulfilled")
-    .map((resultado) => resultado.value);
+  const resultados = await Promise.allSettled(
+    gravacoes.map((gravacao) => fsp.writeFile(gravacao.anexo.caminho, gravacao.bytes))
+  );
 
   const falha = resultados.find((resultado) => resultado.status === "rejected");
   if (falha) {
     logErro(`gravação dos anexos do card ${cardId}`, falha.reason);
-    for (const anexo of salvos) removerArquivoDoAnexo(cardId, anexo.arquivo);
+    for (const gravacao of gravacoes) removerArquivoDoAnexo(cardId, gravacao.anexo.arquivo);
     throw falha.reason;
   }
 
-  return salvos;
+  return gravacoes.map((gravacao) => gravacao.anexo);
 }
 
 export function removerArquivoDoAnexo(cardId: string, arquivo: string): void {

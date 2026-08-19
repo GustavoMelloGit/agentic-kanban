@@ -1,4 +1,4 @@
-import AttachmentChip from "@/components/atoms/AttachmentChip";
+import AttachmentChip from "@/components/molecules/AttachmentChip";
 import Icon from "@/components/atoms/Icon";
 import Markdown from "@/components/atoms/Markdown";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
