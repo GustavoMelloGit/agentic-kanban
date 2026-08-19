@@ -47,7 +47,7 @@ export default function KanbanCard({
           <TooltipTrigger asChild>
             <button
               ref={medirTitulo}
-              className="hover:text-brand-text line-clamp-2 min-w-0 text-left leading-snug font-semibold"
+              className="hover:text-brand-text line-clamp-2 min-w-0 text-left leading-snug font-semibold break-words"
               onClick={(evento) => {
                 evento.stopPropagation();
                 onOpen();
@@ -85,7 +85,7 @@ export default function KanbanCard({
           ele já está completo e editável. Um "ver mais" aqui traria de volta o
           card-parede que o corte existe pra evitar. */}
       {card.description && (
-        <p className="text-muted-foreground line-clamp-3 text-xs whitespace-pre-wrap">
+        <p className="text-muted-foreground line-clamp-3 text-xs break-words whitespace-pre-wrap">
           {card.description}
         </p>
       )}
