@@ -8,16 +8,24 @@ import {
   setCardColumn,
   addRun,
   addMessage,
+  addCardAttachments,
+  deleteCardAttachment,
   getMessages,
   setReviewCycles,
   createCard as storeCreateCard,
   updateCard as storeUpdateCard,
   deleteCard as storeDeleteCard,
 } from "./store";
+import {
+  salvarAnexos,
+  removerAnexosDoCard,
+  type ArquivoRecebido,
+} from "./anexos-disco";
 import { buildPrompt, buildChatPrompt, runTool, killTree, ensureWorkspaceDir } from "./runner";
 import {
   MAX_REVIEW_CYCLES,
   colunaRodaAgente,
+  type Attachment,
   type Card,
   type Column,
   type Project,
@@ -238,12 +246,20 @@ export type ResultadoDeMensagem =
   | "card-inexistente"
   | "coluna-sem-chat"
   | "mensagem-vazia"
-  | "agente-ocupado";
+  | "agente-ocupado"
+  | "falha-ao-salvar-anexo";
 
 // User sends a message in a chat column; the agent replies in a new turn.
 // Fora de uma coluna de chat a resposta seria montada com a persona e a
 // instruction da coluna atual — em Development, um agente que edita código.
-export function sendMessage(id: string, text: unknown): ResultadoDeMensagem {
+//
+// Mensagem só com anexo é envio legítimo: o arquivo é o recado. O que não vale
+// é envio sem texto e sem arquivo — aí não há nada pro agente responder.
+export async function sendMessage(
+  id: string,
+  text: unknown,
+  arquivos: ArquivoRecebido[] = []
+): Promise<ResultadoDeMensagem> {
   const cardRow = getCardRow(id);
   if (!cardRow) {
     logErro("envio de mensagem", `card não encontrado: ${id}`);
@@ -257,22 +273,67 @@ export function sendMessage(id: string, text: unknown): ResultadoDeMensagem {
   }
 
   const textoDaMensagem = textoNaoVazio(text);
-  if (!textoDaMensagem) {
+  if (!textoDaMensagem && arquivos.length === 0) {
     logErro(
       "envio de mensagem",
-      `mensagem inválida para o card ${id}: esperava texto não vazio, veio ${typeof text}`
+      `mensagem inválida para o card ${id}: esperava texto não vazio ou ao menos um anexo, veio ${typeof text}`
     );
     return "mensagem-vazia";
   }
 
+  // A recusa vem antes da escrita em disco: gravar arquivo de uma mensagem que
+  // não vai existir deixaria anexo órfão na pasta do card.
   if (agenteOcupado(id)) {
     logErro("envio de mensagem", `card ${id} já tem um turno em andamento; mensagem recusada`);
     return "agente-ocupado";
   }
 
-  addMessage(id, "user", textoDaMensagem);
+  let anexos;
+  try {
+    anexos = await salvarAnexos(id, arquivos);
+  } catch (erro) {
+    logErro(`gravação dos anexos da mensagem do card ${id}`, erro);
+    return "falha-ao-salvar-anexo";
+  }
+
+  addMessage(id, "user", textoDaMensagem ?? "", undefined, anexos);
   startChatTurn(id);
   return "enviada";
+}
+
+export type ResultadoDeAnexo =
+  | { situacao: "anexado"; anexos: Attachment[] }
+  | { situacao: "card-inexistente" }
+  | { situacao: "falha-ao-salvar" };
+
+// Anexo do card é independente de mensagem e vale pro card inteiro: ele entra em
+// todo disparo, em qualquer coluna. Por isso não é recusado com agente vivo —
+// só não alcança o disparo que já está em curso.
+export async function attachToCard(
+  id: string,
+  arquivos: ArquivoRecebido[]
+): Promise<ResultadoDeAnexo> {
+  if (!getCardRow(id)) {
+    logErro("anexo no card", `card não encontrado: ${id}`);
+    return { situacao: "card-inexistente" };
+  }
+
+  try {
+    return { situacao: "anexado", anexos: addCardAttachments(id, await salvarAnexos(id, arquivos)) };
+  } catch (erro) {
+    logErro(`gravação dos anexos do card ${id}`, erro);
+    return { situacao: "falha-ao-salvar" };
+  }
+}
+
+// Só anexo do card sai. Anexo de mensagem é imutável — a conversa é registro do
+// que foi enviado —, e remover um do card não mexe nas mensagens já enviadas.
+export function detachFromCard(anexoId: string): boolean {
+  const removido = deleteCardAttachment(anexoId);
+  if (!removido) {
+    logErro("remoção de anexo", `anexo ${anexoId} não é um anexo removível de card`);
+  }
+  return removido;
 }
 
 export type ResultadoDeExecucao =
@@ -421,11 +482,15 @@ export async function runCard(id: string, columnId?: string) {
     }
 
     const cardDoBoard = board.cards.find((card) => card.id === id);
-    const cardForPrompt: Pick<Card, "title" | "description" | "history" | "messages"> = {
+    const cardForPrompt: Pick<
+      Card,
+      "title" | "description" | "history" | "messages" | "attachments"
+    > = {
       title: cardRow.title,
       description: cardRow.description,
       history: cardDoBoard?.history ?? [],
       messages: cardDoBoard?.messages ?? [],
+      attachments: cardDoBoard?.attachments ?? [],
     };
     const prompt = buildPrompt(col, cardForPrompt, project, worktree ?? undefined);
 
@@ -553,10 +618,12 @@ async function runChatTurn(id: string) {
 
     const worktree = col.worktree ? await worktreeParaConversa(id, project) : null;
 
+    const cardDoBoard = board.cards.find((card) => card.id === id);
     const cardForPrompt = {
       title: cardRow.title,
       description: cardRow.description,
-      messages: board.cards.find((card) => card.id === id)?.messages ?? [],
+      messages: cardDoBoard?.messages ?? [],
+      attachments: cardDoBoard?.attachments ?? [],
     };
     const prompt = buildChatPrompt(col, cardForPrompt, project, worktree ?? undefined);
 
@@ -672,12 +739,15 @@ export function updateCard(
 }
 
 // Delete a card. A running agent is killed first, so nothing writes back a
-// status/run for a card that no longer exists.
+// status/run for a card that no longer exists. Excluir o card apaga os anexos:
+// eles sobrevivem ao card chegar em Done, mas não ao card deixar de existir.
 export async function deleteCard(id: string): Promise<boolean> {
   await cancelCard(id, "exclusao");
 
   const cardRow = getCardRow(id);
   if (cardRow) await limparWorktree(id, getProject(cardRow.projectId));
 
-  return storeDeleteCard(id);
+  const excluido = storeDeleteCard(id);
+  if (excluido) removerAnexosDoCard(id);
+  return excluido;
 }
