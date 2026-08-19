@@ -36,6 +36,8 @@ export default function CardComposer({
   ocupado: boolean;
 }) {
   const campo = useRef<HTMLTextAreaElement>(null);
+  const compositor = useRef<HTMLDivElement>(null);
+  const seletorAberto = useRef(false);
 
   useEffect(() => {
     campo.current?.focus();
@@ -50,10 +52,37 @@ export default function CardComposer({
     area.style.height = `${area.scrollHeight}px`;
   }, [value]);
 
+  // Fecha sozinho quando não há nada escrito e o clique cai fora do compositor;
+  // com texto digitado ficar aberto é o comportamento seguro — nada pode comer
+  // o que o usuário escreveu. Fechar por blur do título não serve: o seletor de
+  // projeto rouba o foco do campo, e escolher o projeto antes de digitar o
+  // título derrubava o compositor inteiro.
+  useEffect(() => {
+    const aoApontar = (evento: PointerEvent) => {
+      if (seletorAberto.current) return;
+      if (compositor.current?.contains(evento.target as Node)) return;
+      if (!value.trim()) onCancel();
+    };
+    document.addEventListener("pointerdown", aoApontar);
+    return () => document.removeEventListener("pointerdown", aoApontar);
+  }, [value, onCancel]);
+
   const rodaAgente = column.type !== "manual";
 
   return (
-    <div className="bg-surface-2 border-primary mt-2 rounded-md border p-3 shadow-md">
+    <div
+      ref={compositor}
+      // o conteúdo do seletor mora num portal fora desta árvore no DOM, então
+      // Esc que só fecha a lista de projetos não chega aqui como se fosse do
+      // compositor
+      onKeyDown={(evento) => {
+        if (evento.key !== "Escape") return;
+        if (!compositor.current?.contains(evento.target as Node)) return;
+        evento.preventDefault();
+        onCancel();
+      }}
+      className="bg-surface-2 border-primary mt-2 rounded-md border p-3 shadow-md"
+    >
       <textarea
         ref={campo}
         rows={1}
@@ -62,20 +91,10 @@ export default function CardComposer({
         value={value}
         onChange={(evento) => onChange(evento.target.value)}
         onKeyDown={(evento) => {
-          if (evento.key === "Escape") {
-            evento.preventDefault();
-            onCancel();
-          }
           if (evento.key === "Enter" && !evento.shiftKey) {
             evento.preventDefault();
             onSubmit();
           }
-        }}
-        // fecha sozinho quando não há nada escrito; com texto digitado ficar
-        // aberto é o comportamento seguro — blur não pode comer o que o usuário
-        // escreveu
-        onBlur={() => {
-          if (!value.trim()) onCancel();
         }}
         className="placeholder:text-faint w-full resize-none bg-transparent font-semibold leading-snug outline-none"
       />
@@ -83,7 +102,13 @@ export default function CardComposer({
       {/* sempre visível, mesmo com um projeto só: é o projeto que decide qual
           CLI roda e em qual workspace, então o card não deve nascer sem que dê
           pra ver — e conferir — o destino */}
-      <Select value={projectId} onValueChange={onProjectChange}>
+      <Select
+        value={projectId}
+        onValueChange={onProjectChange}
+        onOpenChange={(aberto) => {
+          seletorAberto.current = aberto;
+        }}
+      >
         <SelectTrigger aria-label="Projeto do novo card" className="mt-2 h-7 w-full text-xs">
           <SelectValue placeholder="Escolha o projeto" />
         </SelectTrigger>
