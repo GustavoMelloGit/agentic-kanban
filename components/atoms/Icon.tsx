@@ -6,11 +6,14 @@ import {
   Code,
   Columns3,
   CornerDownLeft,
+  File,
   Folder,
   Lightbulb,
   Loader2,
   MessageSquare,
   MessagesSquare,
+  Paperclip,
+  Plus,
   RotateCw,
   SearchCheck,
   Trash2,
@@ -25,7 +28,10 @@ import { cn } from "@/lib/ui/utils";
 // estrutural: depende da fonte do sistema, muda de desenho entre plataformas e
 // ignora os tokens de cor e tamanho.
 const ICONES = {
+  adicionar: Plus,
   alerta: AlertTriangle,
+  anexo: Paperclip,
+  arquivo: File,
   aprovado: Check,
   cancelar: CircleStop,
   conversa: MessageSquare,

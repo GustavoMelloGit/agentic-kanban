@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Icon from "@/components/atoms/Icon";
 import ChatComposer from "@/components/molecules/ChatComposer";
+import CardAttachments from "@/components/organisms/CardAttachments";
 import ChatThread from "@/components/organisms/ChatThread";
 import RunHistory from "@/components/organisms/RunHistory";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,15 @@ export default function CardDrawer({
   cancelando,
   chatInput,
   onChatInputChange,
+  chatArquivos,
+  erroDoAnexoDoChat,
+  onAnexarNoChat,
+  onRemoverAnexoDoChat,
+  erroDoAnexoDoCard,
+  anexandoNoCard,
+  removendoAnexoId,
+  onAnexarNoCard,
+  onRemoverAnexoDoCard,
   draft,
   suja,
   salvando,
@@ -46,6 +56,15 @@ export default function CardDrawer({
   cancelando: boolean;
   chatInput: string;
   onChatInputChange: (texto: string) => void;
+  chatArquivos: File[];
+  erroDoAnexoDoChat: string | null;
+  onAnexarNoChat: (arquivos: File[]) => void;
+  onRemoverAnexoDoChat: (indice: number) => void;
+  erroDoAnexoDoCard: string | null;
+  anexandoNoCard: boolean;
+  removendoAnexoId: string | null;
+  onAnexarNoCard: (arquivos: File[]) => void;
+  onRemoverAnexoDoCard: (id: string) => void;
   draft: Pick<Card, "title" | "description">;
   suja: boolean;
   salvando: boolean;
@@ -158,6 +177,17 @@ export default function CardDrawer({
               Descartar
             </Button>
           </div>
+
+          <Separator className="my-2" />
+
+          <CardAttachments
+            anexos={card.attachments}
+            onAnexar={onAnexarNoCard}
+            onRemover={onRemoverAnexoDoCard}
+            erro={erroDoAnexoDoCard}
+            enviando={anexandoNoCard}
+            removendoId={removendoAnexoId}
+          />
         </div>
 
         <div className="my-4 flex gap-2">
@@ -211,6 +241,10 @@ export default function CardDrawer({
             onChange={onChatInputChange}
             onSubmit={onSendChat}
             onCancel={() => onCancel(false)}
+            onAnexar={onAnexarNoChat}
+            onRemoverAnexo={onRemoverAnexoDoChat}
+            arquivos={chatArquivos}
+            erroDeAnexo={erroDoAnexoDoChat}
             rodando={rodando}
             cancelando={cancelando}
             conversaVazia={conversaReal.length === 0}

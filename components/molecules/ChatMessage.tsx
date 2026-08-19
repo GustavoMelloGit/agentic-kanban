@@ -1,3 +1,4 @@
+import AttachmentChip from "@/components/atoms/AttachmentChip";
 import Icon from "@/components/atoms/Icon";
 import Markdown from "@/components/atoms/Markdown";
 import { Bubble, BubbleContent } from "@/components/ui/bubble";
@@ -14,6 +15,9 @@ const ROTULO = { user: "Você", agent: "Agente" } as const;
 export default function ChatMessage({ message }: { message: Mensagem }) {
   const doUsuario = message.role === "user";
   const falhou = message.ok === false;
+  // Mensagem só com anexo é envio válido: sem texto, a bolha é a lista de
+  // arquivos. Anexo enviado não sai mais — a conversa é registro.
+  const temTexto = message.content.trim().length > 0;
 
   return (
     <Message align={doUsuario ? "end" : "start"}>
@@ -34,7 +38,26 @@ export default function ChatMessage({ message }: { message: Mensagem }) {
               falhou && "border-danger/40"
             )}
           >
-            {doUsuario ? message.content : <Markdown content={message.content} />}
+            {temTexto &&
+              (doUsuario ? message.content : <Markdown content={message.content} />)}
+
+            {message.attachments.length > 0 && (
+              <ul
+                className={cn("flex flex-wrap gap-2", temTexto && "mt-2")}
+                aria-label="Arquivos anexados"
+              >
+                {message.attachments.map((anexo) => (
+                  <li key={anexo.id} className="min-w-0">
+                    <AttachmentChip
+                      nome={anexo.name}
+                      tamanho={anexo.size}
+                      tipo={anexo.mime}
+                      href={`/api/attachments/${anexo.id}`}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
           </BubbleContent>
         </Bubble>
       </MessageContent>
