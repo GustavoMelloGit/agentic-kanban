@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import Icon from "@/components/atoms/Icon";
+import Markdown from "@/components/atoms/Markdown";
 import ChatComposer from "@/components/molecules/ChatComposer";
+import RichTextEditor from "@/components/molecules/RichTextEditor";
 import CardAttachments from "@/components/organisms/CardAttachments";
 import ChatThread from "@/components/organisms/ChatThread";
 import RunHistory from "@/components/organisms/RunHistory";
@@ -79,8 +81,20 @@ export default function CardDrawer({
   onSendChat: () => void;
 }) {
   const [arquivoAberto, setArquivoAberto] = useState(false);
+  // guarda o id em vez de um booleano: trocar de card no board reaproveita esta
+  // instância, e um booleano deixaria o próximo card já aberto em edição
+  const [cardComDescricaoEmEdicao, setCardComDescricaoEmEdicao] = useState<string | null>(
+    null,
+  );
   const rodando = card.status === "running";
   const ehChat = !!column?.chat;
+  // Enquanto o agente roda a descrição fica só de leitura: o requisito que ele
+  // já leu não pode mudar debaixo dele.
+  const editandoDescricao = cardComDescricaoEmEdicao === card.id && !rodando;
+
+  function alternarEdicaoDaDescricao(editar: boolean) {
+    setCardComDescricaoEmEdicao(editar ? card.id : null);
+  }
   // O detalhe é onde se lê o erro da execução, então é onde precisa dar pra
   // rodar de novo — o mini-card sozinho obrigava a fechar o drawer pra agir.
   const podeRedisparar = podeDispararAgente(column, card.messages) && !rodando;
@@ -132,17 +146,57 @@ export default function CardDrawer({
             disabled={rodando || salvando}
             className="text-base font-semibold tracking-[-0.01em]"
           />
-          <textarea
-            aria-label="Descrição do card"
-            placeholder="Descrição — é o que o agente de desenvolvimento recebe como requisito."
-            rows={5}
-            value={draft.description}
-            onChange={(evento) =>
-              onDraftChange({ description: evento.target.value })
-            }
-            disabled={rodando || salvando}
-            className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 w-full resize-y rounded-md border bg-transparent px-3 py-2 text-[13px] shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
-          />
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-faint text-[11px] tracking-[0.06em] uppercase">
+              Descrição
+            </span>
+            <Button
+              size="xs"
+              variant="ghost"
+              disabled={rodando}
+              onClick={() => alternarEdicaoDaDescricao(!editandoDescricao)}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <Icon name={editandoDescricao ? "visualizar" : "editar"} size="md" />
+              {editandoDescricao ? "Ver formatada" : "Editar"}
+            </Button>
+          </div>
+
+          {editandoDescricao ? (
+            <RichTextEditor
+              value={draft.description}
+              onChange={(markdown) => onDraftChange({ description: markdown })}
+              placeholder="Descrição — é o que o agente de desenvolvimento recebe como requisito."
+              ariaLabel="Descrição do card"
+              desabilitado={rodando || salvando}
+              focoInicial
+              altura="bloco"
+            />
+          ) : (
+            /* clicar no texto volta pro editor, que é o gesto de quem quer
+               corrigir o requisito que acabou de ler; o botão acima é o mesmo
+               caminho pra quem está no teclado */
+            <div
+              onClick={(evento) => {
+                // link dentro da descrição é pra ser seguido, não pra abrir edição
+                if ((evento.target as HTMLElement).closest("a")) return;
+                alternarEdicaoDaDescricao(true);
+              }}
+              className={cn(
+                "rounded-md border border-transparent px-3 py-2 text-[13px]",
+                !rodando && "hover:border-border cursor-text",
+              )}
+            >
+              {draft.description ? (
+                <Markdown content={draft.description} quebrasSimples />
+              ) : (
+                <span className="text-muted-foreground">
+                  Descrição — é o que o agente de desenvolvimento recebe como
+                  requisito.
+                </span>
+              )}
+            </div>
+          )}
 
           {rodando && (
             <p className="text-muted-foreground text-xs">
@@ -164,7 +218,10 @@ export default function CardDrawer({
             <Button
               size="sm"
               disabled={!suja || salvando || rodando}
-              onClick={onSalvar}
+              onClick={() => {
+                alternarEdicaoDaDescricao(false);
+                onSalvar();
+              }}
             >
               {salvando ? "salvando…" : "Salvar"}
             </Button>
@@ -172,7 +229,10 @@ export default function CardDrawer({
               size="sm"
               variant="ghost"
               disabled={!suja || salvando}
-              onClick={onDescartar}
+              onClick={() => {
+                alternarEdicaoDaDescricao(false);
+                onDescartar();
+              }}
             >
               Descartar
             </Button>
