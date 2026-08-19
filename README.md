@@ -31,7 +31,7 @@ Trocar de ferramenta = trocar um template de comando (`lib/config.ts` → `TOOLS
 
 ```bash
 npm install
-npm run dev   # http://localhost:3000 (usa outra porta se a 3000 estiver ocupada)
+npm run dev   # http://localhost:4444
 ```
 
 ## Projetos
