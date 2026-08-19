@@ -32,6 +32,22 @@ export default function KanbanCard({
 }) {
   const { medirTexto: medirTitulo, cortado: tituloCortado } = useTextoCortado(card.title);
 
+  /* botão de verdade em vez de clique no container: o card tem controles
+     dentro, então role="button" nele seria ARIA inválido e o teclado ficaria
+     sem como abrir o drawer */
+  const botaoDoTitulo = (
+    <button
+      ref={medirTitulo}
+      className="hover:text-brand-text line-clamp-2 min-w-0 text-left leading-snug font-semibold break-words"
+      onClick={(evento) => {
+        evento.stopPropagation();
+        onOpen();
+      }}
+    >
+      {card.title}
+    </button>
+  );
+
   return (
     <div
       draggable
@@ -40,30 +56,20 @@ export default function KanbanCard({
       className="bg-surface-2 hover:border-border-strong group mt-2 cursor-grab rounded-md border p-3 shadow-xs transition-[border-color,box-shadow] duration-150 ease-(--ease-board) hover:shadow-md active:cursor-grabbing"
     >
       <div className="mb-1 flex items-start justify-between gap-2">
-        {/* botão de verdade em vez de clique no container: o card tem controles
-            dentro, então role="button" nele seria ARIA inválido e o teclado
-            ficaria sem como abrir o drawer */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              ref={medirTitulo}
-              className="hover:text-brand-text line-clamp-2 min-w-0 text-left leading-snug font-semibold break-words"
-              onClick={(evento) => {
-                evento.stopPropagation();
-                onOpen();
-              }}
-            >
-              {card.title}
-            </button>
-          </TooltipTrigger>
-          {/* só quando o corte de fato aconteceu: repetir num balão o título que
-              já está inteiro na tela é ruído */}
-          {tituloCortado && (
+        {/* o Tooltip inteiro sai da árvore quando não há corte: esconder só o
+            conteúdo deixaria o Root sem quem fecha no pointerleave, e o botão
+            ficaria preso em delayed-open com aria-describedby apontando pra um
+            balão que nunca montou */}
+        {tituloCortado ? (
+          <Tooltip>
+            <TooltipTrigger asChild>{botaoDoTitulo}</TooltipTrigger>
             <TooltipContent side="bottom" align="start" className="max-w-64">
               {card.title}
             </TooltipContent>
-          )}
-        </Tooltip>
+          </Tooltip>
+        ) : (
+          botaoDoTitulo
+        )}
         {/* some por opacidade, não por display: o alvo existe sempre, senão o
             teclado não alcança */}
         <Button
