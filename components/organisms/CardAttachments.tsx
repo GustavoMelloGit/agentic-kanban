@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import AttachmentChip from "@/components/atoms/AttachmentChip";
+import AttachmentChip from "@/components/molecules/AttachmentChip";
 import Icon from "@/components/atoms/Icon";
 import { Button } from "@/components/ui/button";
 import type { Attachment } from "@/lib/config";
