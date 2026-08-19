@@ -43,3 +43,17 @@ export const runs = sqliteTable("runs", {
   output: text("output").notNull(),
   at: text("at").notNull(),
 });
+
+// Attachments: arquivos que o usuário anexou. `messageId` nulo = anexo do card
+// (entra em todo disparo); preenchido = anexo daquela mensagem do chat.
+export const attachments = sqliteTable("attachments", {
+  id: text("id").primaryKey(),
+  cardId: text("card_id").notNull(),
+  messageId: integer("message_id"),
+  name: text("name").notNull(),
+  size: integer("size").notNull(),
+  mime: text("mime").notNull(),
+  // nome em disco, dentro de data/anexos/<card_id>/
+  file: text("file").notNull(),
+  at: text("at").notNull(),
+});

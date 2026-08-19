@@ -3,10 +3,16 @@
 import { useState } from "react";
 import Icon from "@/components/atoms/Icon";
 import ChatComposer from "@/components/molecules/ChatComposer";
+import CardAttachments from "@/components/organisms/CardAttachments";
 import ChatThread from "@/components/organisms/ChatThread";
 import RunHistory from "@/components/organisms/RunHistory";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Separator } from "@/components/ui/separator";
 import { Input } from "@/components/ui/input";
 import type { Card, Column } from "@/lib/config";
 import { mensagensParaContexto } from "@/lib/contexto";
@@ -22,6 +28,15 @@ export default function CardDrawer({
   cancelando,
   chatInput,
   onChatInputChange,
+  chatArquivos,
+  erroDoAnexoDoChat,
+  onAnexarNoChat,
+  onRemoverAnexoDoChat,
+  erroDoAnexoDoCard,
+  anexandoNoCard,
+  removendoAnexoId,
+  onAnexarNoCard,
+  onRemoverAnexoDoCard,
   draft,
   suja,
   salvando,
@@ -41,6 +56,15 @@ export default function CardDrawer({
   cancelando: boolean;
   chatInput: string;
   onChatInputChange: (texto: string) => void;
+  chatArquivos: File[];
+  erroDoAnexoDoChat: string | null;
+  onAnexarNoChat: (arquivos: File[]) => void;
+  onRemoverAnexoDoChat: (indice: number) => void;
+  erroDoAnexoDoCard: string | null;
+  anexandoNoCard: boolean;
+  removendoAnexoId: string | null;
+  onAnexarNoCard: (arquivos: File[]) => void;
+  onRemoverAnexoDoCard: (id: string) => void;
   draft: Pick<Card, "title" | "description">;
   suja: boolean;
   salvando: boolean;
@@ -95,7 +119,7 @@ export default function CardDrawer({
           "shrink-0",
           // num card de chat o histórico é raro (só se o card voltou de uma
           // coluna de execução); quando existe, ele cede espaço pra conversa
-          ehChat && card.history.length > 0 && "max-h-[40%] overflow-y-auto"
+          ehChat && card.history.length > 0 && "max-h-[40%] overflow-y-auto",
         )}
       >
         {/* mt-6 desce os campos pra baixo do botão "fechar", que é absoluto no
@@ -113,25 +137,35 @@ export default function CardDrawer({
             placeholder="Descrição — é o que o agente de desenvolvimento recebe como requisito."
             rows={5}
             value={draft.description}
-            onChange={(evento) => onDraftChange({ description: evento.target.value })}
+            onChange={(evento) =>
+              onDraftChange({ description: evento.target.value })
+            }
             disabled={rodando || salvando}
             className="border-input placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-ring/50 dark:bg-input/30 w-full resize-y rounded-md border bg-transparent px-3 py-2 text-[13px] shadow-xs transition-[color,box-shadow] outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
           />
 
           {rodando && (
             <p className="text-muted-foreground text-xs">
-              Um agente está atuando neste card — a edição volta quando ele terminar.
+              Um agente está atuando neste card — a edição volta quando ele
+              terminar.
             </p>
           )}
           {erroDaEdicao && (
-            <p role="alert" className="text-danger flex items-center gap-2 text-xs">
+            <p
+              role="alert"
+              className="text-danger flex items-center gap-2 text-xs"
+            >
               <Icon name="alerta" size="md" />
               {erroDaEdicao}
             </p>
           )}
 
           <div className="flex gap-2">
-            <Button size="sm" disabled={!suja || salvando || rodando} onClick={onSalvar}>
+            <Button
+              size="sm"
+              disabled={!suja || salvando || rodando}
+              onClick={onSalvar}
+            >
               {salvando ? "salvando…" : "Salvar"}
             </Button>
             <Button
@@ -143,6 +177,17 @@ export default function CardDrawer({
               Descartar
             </Button>
           </div>
+
+          <Separator className="my-2" />
+
+          <CardAttachments
+            anexos={card.attachments}
+            onAnexar={onAnexarNoCard}
+            onRemover={onRemoverAnexoDoCard}
+            erro={erroDoAnexoDoCard}
+            enviando={anexandoNoCard}
+            removendoId={removendoAnexoId}
+          />
         </div>
 
         <div className="my-4 flex gap-2">
@@ -178,10 +223,16 @@ export default function CardDrawer({
         )}
       </div>
 
+      {/* fora do bloco que rola: a linha marca onde o histórico acaba e a
+          conversa começa, e por isso não pode subir junto com o histórico */}
+      {ehChat && card.history.length > 0 && <Separator className="my-4" />}
+
       {ehChat ? (
         <div className="flex min-h-0 flex-1 flex-col gap-3">
           {card.messages.length === 0 && !rodando ? (
-            <p className="text-muted-foreground text-xs">{placeholderDaConversa}</p>
+            <p className="text-muted-foreground text-xs">
+              {placeholderDaConversa}
+            </p>
           ) : (
             <ChatThread messages={card.messages} pensando={rodando} />
           )}
@@ -190,6 +241,10 @@ export default function CardDrawer({
             onChange={onChatInputChange}
             onSubmit={onSendChat}
             onCancel={() => onCancel(false)}
+            onAnexar={onAnexarNoChat}
+            onRemoverAnexo={onRemoverAnexoDoChat}
+            arquivos={chatArquivos}
+            erroDeAnexo={erroDoAnexoDoChat}
             rodando={rodando}
             cancelando={cancelando}
             conversaVazia={conversaReal.length === 0}
@@ -215,6 +270,8 @@ export default function CardDrawer({
               </CollapsibleContent>
             </Collapsible>
           )}
+
+          {card.messages.length > 0 && <Separator />}
 
           <RunHistory history={card.history} columns={columns} />
         </div>

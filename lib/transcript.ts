@@ -1,4 +1,5 @@
 import type { ChatMessage } from "./config";
+import { descreverAnexo } from "./anexos";
 import { logErro } from "./log";
 
 export const LIMITE_DE_CARACTERES_DA_TRANSCRICAO = 12_000;
@@ -21,6 +22,20 @@ export interface OpcoesDeTranscricao {
 
 function montarBloco(bloco: BlocoDaTranscricao): string {
   return `${bloco.rotulo}${SEPARADOR_DE_ROTULO}${bloco.conteudo}`;
+}
+
+// O anexo da mensagem vive dentro do bloco dela: é ali que ele foi enviado, e é
+// ali que ele continua disponível nos turnos seguintes. Mensagem só com anexo é
+// envio válido, então o conteúdo vazio some em vez de deixar uma linha solta.
+function conteudoComAnexos(mensagem: ChatMessage): string {
+  if (mensagem.attachments.length === 0) return mensagem.content;
+
+  const lista = mensagem.attachments.map((anexo) => `- ${descreverAnexo(anexo)}`).join("\n");
+  const bloco =
+    `[Files attached to this message — open them from these local paths before replying; ` +
+    `say so in your reply if you cannot read one of the formats]\n${lista}`;
+
+  return [mensagem.content.trim(), bloco].filter(Boolean).join("\n\n");
 }
 
 // Corta o conteúdo pelo começo até caber no orçamento, nunca o rótulo: um rótulo
@@ -57,7 +72,7 @@ export function formatTranscript(
 
   const blocos: BlocoDaTranscricao[] = mensagens.map((mensagem) => ({
     rotulo: mensagem.role === "user" ? rotuloDoUsuario : rotuloDoAgente,
-    conteudo: mensagem.content,
+    conteudo: conteudoComAnexos(mensagem),
   }));
 
   const transcricaoCompleta = blocos.map(montarBloco).join(SEPARADOR_DE_BLOCOS);

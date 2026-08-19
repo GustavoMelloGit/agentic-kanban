@@ -1,10 +1,19 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import path from "node:path";
 import fs from "node:fs";
-import { COLUMNS, type Column, type Project, type Tool, type RunEntry, type ChatMessage } from "./config";
+import {
+  COLUMNS,
+  type Attachment,
+  type Column,
+  type Project,
+  type Tool,
+  type RunEntry,
+  type ChatMessage,
+} from "./config";
 import { logErro } from "./log";
 import { formatTranscript } from "./transcript";
 import { mensagensParaContexto, ultimaEtapaParaContexto } from "./contexto";
+import { descreverAnexo } from "./anexos";
 import type { Worktree } from "./worktree";
 
 const TIMEOUT_MS = 10 * 60 * 1000; // 10 min safety cap per run
@@ -32,9 +41,31 @@ function nomeDaColuna(id: string): string {
   return COLUMNS.find((coluna) => coluna.id === id)?.name ?? id;
 }
 
+// Anexo do card entra em todo disparo, em qualquer coluna. O agente decide o
+// que consegue ler — mas silêncio não é resposta: formato que ele não abre tem
+// que aparecer na saída, senão o usuário acha que o arquivo foi considerado.
+function secaoDeAnexos(anexos: Attachment[]): string | null {
+  if (anexos.length === 0) return null;
+
+  const lista = anexos.map((anexo) => `- ${descreverAnexo(anexo)}`).join("\n");
+  return (
+    `\n## Files attached to this card\n` +
+    `These are on your local filesystem — read each one before you start, images included. ` +
+    `They are requirements just like the description.\n` +
+    `${lista}\n` +
+    `If you cannot read one of these formats, say so explicitly in your output instead of ignoring it silently.`
+  );
+}
+
 export function buildPrompt(
   column: Column,
-  card: { title: string; description: string; history: RunEntry[]; messages: ChatMessage[] },
+  card: {
+    title: string;
+    description: string;
+    history: RunEntry[];
+    messages: ChatMessage[];
+    attachments: Attachment[];
+  },
   project: Project,
   worktree?: Worktree
 ): string {
@@ -43,6 +74,8 @@ export function buildPrompt(
   parts.push(`Project: ${project.name}`);
   if (worktree) parts.push(gitIsolationSection(worktree) + COMMIT_RULE);
   parts.push(`\n## Card: ${card.title}\n${card.description || "(no description)"}`);
+  const anexosDoCard = secaoDeAnexos(card.attachments);
+  if (anexosDoCard) parts.push(anexosDoCard);
   const conversa = mensagensParaContexto(card.messages);
   if (conversa.length) {
     // Rótulo neutro de propósito: o thread junta o refinamento com a conversa da
@@ -69,7 +102,12 @@ export function buildPrompt(
 // specific to the column comes from its `chatPrompt`; the scaffolding is here.
 export function buildChatPrompt(
   column: Column,
-  card: { title: string; description: string; messages: ChatMessage[] },
+  card: {
+    title: string;
+    description: string;
+    messages: ChatMessage[];
+    attachments: Attachment[];
+  },
   project: Project,
   worktree?: Worktree
 ): string {
@@ -79,6 +117,8 @@ export function buildChatPrompt(
   parts.push(`Project: ${project.name}`);
   if (worktree) parts.push(gitIsolationSection(worktree));
   parts.push(`\n## Card\n**${card.title}**\n${card.description || "(no description)"}`);
+  const anexosDoCard = secaoDeAnexos(card.attachments);
+  if (anexosDoCard) parts.push(anexosDoCard);
 
   const conversa = mensagensParaContexto(card.messages);
   if (conversa.length === 0) {

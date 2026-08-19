@@ -51,6 +51,17 @@ function init() {
       ok INTEGER,
       at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS attachments (
+      id TEXT PRIMARY KEY,
+      card_id TEXT NOT NULL,
+      message_id INTEGER,
+      name TEXT NOT NULL,
+      size INTEGER NOT NULL,
+      mime TEXT NOT NULL,
+      file TEXT NOT NULL,
+      at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS attachments_card_id ON attachments (card_id);
     CREATE TABLE IF NOT EXISTS meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL

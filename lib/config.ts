@@ -87,12 +87,26 @@ export interface RunEntry {
   at: string;
 }
 
+// Arquivo que o usuário anexou. `path` é o caminho local que vai pro prompt: o
+// agente abre o arquivo direto do disco, sem passar pela API do board.
+export interface Attachment {
+  id: string;
+  name: string;
+  size: number;
+  mime: string;
+  path: string;
+  at: string;
+}
+
 export interface ChatMessage {
+  id: number;
   role: "user" | "agent";
   content: string;
   // desfecho do turno que produziu a mensagem: `false` marca resposta que
   // falhou, que fica visível na thread mas não volta como contexto
   ok?: boolean;
+  // anexo de mensagem é imutável: a conversa é registro do que foi enviado
+  attachments: Attachment[];
   at: string;
 }
 
@@ -107,6 +121,9 @@ export interface Card {
   reviewCycles: number;
   history: RunEntry[];
   messages: ChatMessage[];
+  // anexos do card: valem pro card inteiro e entram em todo disparo, em
+  // qualquer coluna — diferente dos anexos presos a uma mensagem
+  attachments: Attachment[];
   createdAt: string;
 }
 
@@ -139,7 +156,7 @@ const WORKSPACE_EXPLORATION_DIRECTIVE =
   "You are running inside this project's workspace: the current working directory IS the project. " +
   "Before restating the goal or asking anything, explore the workspace to understand it for real — this is read-only, do NOT modify anything. " +
   "Read the README and any documentation, the dependency manifest (package.json or its equivalent), the folder structure, and the modules relevant to what this card asks for. " +
-  "Ground your restatement and every question in what you actually find in the code — the real stack, conventions, current state, and concrete files — never in generic assumptions.";
+  "Ground what you write in what you actually find in the code — the real stack, conventions and current state — never in generic assumptions.";
 
 export const COLUMNS: Column[] = [
   {
@@ -158,19 +175,26 @@ export const COLUMNS: Column[] = [
     chat: true,
     onComplete: null,
     persona:
-      "a sharp product analyst who turns half-baked ideas into clear, buildable requirements",
+      "a sharp product analyst who turns half-baked ideas into buildable requirements, and who settles the technical decisions instead of handing them back to the user",
     instruction:
-      "This card is an early idea and is under-specified. Identify the gaps. Produce: (1) a crisp restatement of the goal, and (2) the 3-6 most important open questions you need answered before development. Anchor both the restatement and the questions in the concrete files and modules you found in the code. Do NOT write code.",
+      "This card is an early idea. Explore the code first and use what you find to answer your own questions, not to produce new ones.\n" +
+      "Then write, in product language: two or three lines restating the goal as you understood it, followed by only the questions that are genuinely the user's to answer.\n" +
+      "A question belongs to the user only when the answer changes the card's initial design — the intended behavior, what shows up on screen, what is in or out of scope, or a decision that is expensive to reverse. If you already know a better way to do something and taking it does not change that design, take it and at most record it as a one-line assumption. Anything internal — structure, naming, which library, where the code lives — you decide silently.\n" +
+      "At most three questions, one line each. No file paths, no module or symbol names, no code, no technical justification. Asking nothing is a valid and good answer: if the idea is already clear enough to build, say so and list the requirements. Do NOT write code.",
     chatPrompt: {
       briefing:
-        "You are refining a Kanban card through a short back-and-forth with the user. " +
-        "Ask focused questions in small batches, progressively filling the gaps. " +
-        "Keep replies concise and conversational. Do NOT write code.\n" +
-        WORKSPACE_EXPLORATION_DIRECTIVE,
+        "You are refining a Kanban card with the user — the person who had the idea, not the person who will read the code. " +
+        "Keep every reply short, conversational and in product language, and never hand them a decision you are able to take yourself. " +
+        "Do NOT write code.\n" +
+        WORKSPACE_EXPLORATION_DIRECTIVE +
+        "\nThe exploration is for you: it exists so you can settle questions yourself instead of forwarding them to the user. " +
+        "It never becomes content of your reply — no file paths, no module or symbol names, no stack details, no explanation of how the code works today. " +
+        "What you learn shows up only as fewer questions and more confident decisions.",
       opening:
-        "Explore the workspace first as instructed above, then open the conversation: give a brief, code-grounded read of the idea and your first questions.",
+        "Explore the workspace first as instructed above, then open the conversation: a short read of what you understood, and only the questions that are really the user's to answer.",
       continuation:
-        "Respond to the user's latest message. Ask further questions if gaps remain, or — if the requirements now look complete — summarize the finalized requirements and acceptance criteria and say they're ready for development.",
+        "Respond to the user's latest message. Ask again only if an open decision about the card's design is still blocking; prefer closing the conversation over one more round of questions. " +
+        "To close it: summarize the finalized requirements and acceptance criteria, list in one line each the decisions you took on your own, and say they're ready for development.",
       // O refinamento é a primeira coluna do thread: tudo que está lá é turno seu.
       agentLabel: "You",
     },
@@ -254,7 +278,7 @@ export const SEED_PROJECTS: Project[] = [
   { id: "demo", name: "Demo Project", tool: "claude", workspace: "workspaces/demo" },
 ];
 
-export const SEED_CARDS: Omit<Card, "history" | "messages">[] = [
+export const SEED_CARDS: Omit<Card, "history" | "messages" | "attachments">[] = [
   {
     id: "card-1",
     title: "Add a /health endpoint",

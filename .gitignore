@@ -4,6 +4,8 @@ tsconfig.tsbuildinfo
 # estado local: banco do board e os workspaces onde os agentes rodam
 # (workspaces/demo é um repo git próprio, sandbox do agente)
 data/board.db*
+# arquivos que o usuário anexou no chat ou no card
+data/anexos/
 workspaces/
 # uma worktree por card, criada pelo motor antes de rodar o agente
 .claude/worktrees/

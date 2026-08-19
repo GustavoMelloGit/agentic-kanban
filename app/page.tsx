@@ -9,6 +9,7 @@ import CardDrawer from "@/components/organisms/CardDrawer";
 import KanbanCard from "@/components/organisms/KanbanCard";
 import ProjectsDialog from "@/components/organisms/ProjectsDialog";
 import BoardTemplate from "@/components/templates/BoardTemplate";
+import { validarAnexos } from "@/lib/anexos";
 import type { Board, Card } from "@/lib/config";
 import { pedirJson } from "@/lib/http";
 
@@ -28,6 +29,11 @@ export default function BoardPage() {
   const [criando, setCriando] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [chatInput, setChatInput] = useState("");
+  const [chatArquivos, setChatArquivos] = useState<File[]>([]);
+  const [erroDoAnexoDoChat, setErroDoAnexoDoChat] = useState<string | null>(null);
+  const [erroDoAnexoDoCard, setErroDoAnexoDoCard] = useState<string | null>(null);
+  const [anexandoNoCard, setAnexandoNoCard] = useState(false);
+  const [removendoAnexoId, setRemovendoAnexoId] = useState<string | null>(null);
   const [cardDraft, setCardDraft] = useState<CardDraftDono | null>(null);
   const [erroDaEdicao, setErroDaEdicao] = useState<string | null>(null);
   const [salvandoCard, setSalvandoCard] = useState(false);
@@ -44,9 +50,14 @@ export default function BoardPage() {
     cardNaTela.current = open;
   }, [open]);
 
-  // O erro é do card que estava aberto; abrir outro começa limpo.
+  // O erro é do card que estava aberto; abrir outro começa limpo. Os arquivos
+  // pendentes vão junto: eles ainda não foram enviados, e mandá-los pro card
+  // seguinte seria anexar no lugar errado.
   useEffect(() => {
     setErroDaEdicao(null);
+    setChatArquivos([]);
+    setErroDoAnexoDoChat(null);
+    setErroDoAnexoDoCard(null);
   }, [open]);
 
   // Rota de saída do drawer pelo teclado: sem isso o único jeito de fechar é
@@ -224,20 +235,83 @@ export default function BoardPage() {
     setCardDraft((atual) => (atual?.cardId === card.id ? null : atual));
   }
 
+  // Mensagem só com anexo é envio válido: o arquivo é o recado. Vai como
+  // multipart pra mensagem e arquivos nascerem no mesmo passo — mensagem sem os
+  // anexos dela seria registro incompleto da conversa.
   async function sendChat(id: string) {
     const texto = chatInput.trim();
-    if (!texto) return;
+    const arquivos = chatArquivos;
+    if (!texto && arquivos.length === 0) return;
+
     setChatInput("");
+    setChatArquivos([]);
+    setErroDoAnexoDoChat(null);
+
+    const envio = new FormData();
+    envio.append("text", texto);
+    for (const arquivo of arquivos) envio.append("files", arquivo);
 
     const resultado = await pedirJson(`/api/cards/${id}/message`, {
       method: "POST",
-      body: JSON.stringify({ text: texto }),
+      body: envio,
     });
     if (resultado.ok) return;
 
     setErro(resultado.erro ?? "não foi possível enviar a mensagem");
     if (cardNaTela.current !== id) return;
     setChatInput((rascunho) => (rascunho === "" ? texto : rascunho));
+    setChatArquivos((pendentes) => (pendentes.length === 0 ? arquivos : pendentes));
+  }
+
+  // Recusa na hora, antes de qualquer requisição: arquivo grande demais precisa
+  // aparecer como aviso no compositor, não sumir calado.
+  function anexarNoChat(novos: File[]) {
+    const juntos = [...chatArquivos, ...novos];
+    const recusa = validarAnexos(juntos);
+    if (recusa) {
+      setErroDoAnexoDoChat(recusa);
+      return;
+    }
+    setErroDoAnexoDoChat(null);
+    setChatArquivos(juntos);
+  }
+
+  function removerAnexoDoChat(indice: number) {
+    setErroDoAnexoDoChat(null);
+    setChatArquivos((pendentes) => pendentes.filter((_, posicao) => posicao !== indice));
+  }
+
+  async function anexarNoCard(id: string, novos: File[]) {
+    const recusa = validarAnexos(novos);
+    if (recusa) {
+      setErroDoAnexoDoCard(recusa);
+      return;
+    }
+
+    setErroDoAnexoDoCard(null);
+    setAnexandoNoCard(true);
+
+    const envio = new FormData();
+    for (const arquivo of novos) envio.append("files", arquivo);
+
+    const resultado = await pedirJson(`/api/cards/${id}/attachments`, {
+      method: "POST",
+      body: envio,
+    });
+    setAnexandoNoCard(false);
+
+    if (!resultado.ok && cardNaTela.current === id) {
+      setErroDoAnexoDoCard(resultado.erro ?? "não foi possível anexar o arquivo");
+    }
+  }
+
+  async function removerAnexoDoCard(anexoId: string) {
+    setErroDoAnexoDoCard(null);
+    setRemovendoAnexoId(anexoId);
+    const resultado = await pedirJson(`/api/attachments/${anexoId}`, { method: "DELETE" });
+    setRemovendoAnexoId((atual) => (atual === anexoId ? null : atual));
+
+    if (!resultado.ok) setErro(resultado.erro ?? "não foi possível remover o anexo");
   }
 
   function abrirCompositor(columnId: string) {
@@ -359,6 +433,15 @@ export default function BoardPage() {
             cancelando={cancelandoId === openCard.id}
             chatInput={chatInput}
             onChatInputChange={setChatInput}
+            chatArquivos={chatArquivos}
+            erroDoAnexoDoChat={erroDoAnexoDoChat}
+            onAnexarNoChat={anexarNoChat}
+            onRemoverAnexoDoChat={removerAnexoDoChat}
+            erroDoAnexoDoCard={erroDoAnexoDoCard}
+            anexandoNoCard={anexandoNoCard}
+            removendoAnexoId={removendoAnexoId}
+            onAnexarNoCard={(arquivos) => anexarNoCard(openCard.id, arquivos)}
+            onRemoverAnexoDoCard={removerAnexoDoCard}
             draft={draftDoCard(openCard)}
             suja={edicaoSuja(openCard)}
             salvando={salvandoCard}
