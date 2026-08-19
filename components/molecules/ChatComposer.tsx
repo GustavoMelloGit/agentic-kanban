@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import AttachmentChip from "@/components/atoms/AttachmentChip";
+import AttachmentChip from "@/components/molecules/AttachmentChip";
 import Icon from "@/components/atoms/Icon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,8 +63,11 @@ export default function ChatComposer({
         onSubmit();
       }}
       onDragOver={(evento) => {
-        if (rodando) return;
+        // preventDefault sempre, mesmo com o agente rodando: sem ele o form não
+        // é alvo de drop válido e o navegador abre o arquivo solto por cima da
+        // página, levando junto o rascunho e os anexos pendentes.
         evento.preventDefault();
+        if (rodando) return;
         setArrastando(true);
       }}
       onDragLeave={(evento) => {
