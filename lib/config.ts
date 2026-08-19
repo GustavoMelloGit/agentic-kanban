@@ -87,12 +87,26 @@ export interface RunEntry {
   at: string;
 }
 
+// Arquivo que o usuário anexou. `path` é o caminho local que vai pro prompt: o
+// agente abre o arquivo direto do disco, sem passar pela API do board.
+export interface Attachment {
+  id: string;
+  name: string;
+  size: number;
+  mime: string;
+  path: string;
+  at: string;
+}
+
 export interface ChatMessage {
+  id: number;
   role: "user" | "agent";
   content: string;
   // desfecho do turno que produziu a mensagem: `false` marca resposta que
   // falhou, que fica visível na thread mas não volta como contexto
   ok?: boolean;
+  // anexo de mensagem é imutável: a conversa é registro do que foi enviado
+  attachments: Attachment[];
   at: string;
 }
 
@@ -107,6 +121,9 @@ export interface Card {
   reviewCycles: number;
   history: RunEntry[];
   messages: ChatMessage[];
+  // anexos do card: valem pro card inteiro e entram em todo disparo, em
+  // qualquer coluna — diferente dos anexos presos a uma mensagem
+  attachments: Attachment[];
   createdAt: string;
 }
 
@@ -261,7 +278,7 @@ export const SEED_PROJECTS: Project[] = [
   { id: "demo", name: "Demo Project", tool: "claude", workspace: "workspaces/demo" },
 ];
 
-export const SEED_CARDS: Omit<Card, "history" | "messages">[] = [
+export const SEED_CARDS: Omit<Card, "history" | "messages" | "attachments">[] = [
   {
     id: "card-1",
     title: "Add a /health endpoint",

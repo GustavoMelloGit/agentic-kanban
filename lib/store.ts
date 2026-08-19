@@ -1,12 +1,14 @@
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, and, isNull } from "drizzle-orm";
 import { db } from "./db";
-import { cards, projects, runs, messages } from "./schema";
+import { cards, projects, runs, messages, attachments } from "./schema";
 import { emitChange } from "./bus";
 import { temAgenteVivo } from "./execucoes";
 import { gerarSlugUnico } from "./slug";
+import { caminhoDoAnexo, removerArquivoDoAnexo, type AnexoSalvo } from "./anexos-disco";
 import {
   TOOLS,
   COLUMNS,
+  type Attachment,
   type Board,
   type Card,
   type CardStatus,
@@ -25,7 +27,27 @@ function statusVisivel(id: string, status: CardStatus): CardStatus {
   return "error";
 }
 
-function montarCard(card: CardRow, runRows: RunRow[], msgRows: MessageRow[]): Card {
+// O caminho em disco é derivado, não guardado: mover a pasta data/ do app não
+// deixa o banco apontando pra arquivo que não existe mais.
+function montarAnexo(anexo: AttachmentRow): Attachment {
+  return {
+    id: anexo.id,
+    name: anexo.name,
+    size: anexo.size,
+    mime: anexo.mime,
+    path: caminhoDoAnexo(anexo.cardId, anexo.file),
+    at: anexo.at,
+  };
+}
+
+function montarCard(
+  card: CardRow,
+  runRows: RunRow[],
+  msgRows: MessageRow[],
+  anexoRows: AttachmentRow[]
+): Card {
+  const anexosDoCard = anexoRows.filter((anexo) => anexo.cardId === card.id);
+
   return {
     id: card.id,
     title: card.title,
@@ -47,11 +69,16 @@ function montarCard(card: CardRow, runRows: RunRow[], msgRows: MessageRow[]): Ca
     messages: msgRows
       .filter((mensagem) => mensagem.cardId === card.id)
       .map<ChatMessage>((mensagem) => ({
+        id: mensagem.id,
         role: mensagem.role as ChatMessage["role"],
         content: mensagem.content,
         ok: mensagem.ok ?? undefined,
+        attachments: anexosDoCard
+          .filter((anexo) => anexo.messageId === mensagem.id)
+          .map(montarAnexo),
         at: mensagem.at,
       })),
+    attachments: anexosDoCard.filter((anexo) => anexo.messageId === null).map(montarAnexo),
   };
 }
 
@@ -61,8 +88,9 @@ export function getBoard(): Board {
   const cardRows = db.select().from(cards).all();
   const runRows = db.select().from(runs).orderBy(asc(runs.id)).all();
   const msgRows = db.select().from(messages).orderBy(asc(messages.id)).all();
+  const anexoRows = db.select().from(attachments).orderBy(asc(attachments.at)).all();
 
-  const cardsOut = cardRows.map((card) => montarCard(card, runRows, msgRows));
+  const cardsOut = cardRows.map((card) => montarCard(card, runRows, msgRows, anexoRows));
 
   return { tools: TOOLS, columns: COLUMNS, projects: projectRows, cards: cardsOut };
 }
@@ -74,6 +102,7 @@ export function getColumn(id: string): Column | undefined {
 export type CardRow = typeof cards.$inferSelect;
 type RunRow = typeof runs.$inferSelect;
 type MessageRow = typeof messages.$inferSelect;
+type AttachmentRow = typeof attachments.$inferSelect;
 
 export function getCardRow(id: string) {
   return db.select().from(cards).where(eq(cards.id, id)).get();
@@ -85,7 +114,8 @@ export function getCard(id: string): Card | undefined {
   return montarCard(
     row,
     db.select().from(runs).where(eq(runs.cardId, id)).orderBy(asc(runs.id)).all(),
-    db.select().from(messages).where(eq(messages.cardId, id)).orderBy(asc(messages.id)).all()
+    db.select().from(messages).where(eq(messages.cardId, id)).orderBy(asc(messages.id)).all(),
+    db.select().from(attachments).where(eq(attachments.cardId, id)).orderBy(asc(attachments.at)).all()
   );
 }
 
@@ -154,38 +184,85 @@ export function addRun(entry: RunEntry & { cardId: string }) {
 }
 
 export function getMessages(cardId: string): ChatMessage[] {
-  return db
-    .select()
-    .from(messages)
-    .where(eq(messages.cardId, cardId))
-    .orderBy(asc(messages.id))
-    .all()
-    .map((mensagem) => ({
-      role: mensagem.role as ChatMessage["role"],
-      content: mensagem.content,
-      ok: mensagem.ok ?? undefined,
-      at: mensagem.at,
-    }));
+  return getCard(cardId)?.messages ?? [];
 }
 
+// Mensagem e anexos entram juntos, com uma notificação só: dois emitChange
+// deixariam a thread piscar a mensagem sem os arquivos antes de completá-la.
 export function addMessage(
   cardId: string,
   role: ChatMessage["role"],
   content: string,
-  ok?: boolean
+  ok?: boolean,
+  anexos: AnexoSalvo[] = []
 ) {
-  db.insert(messages)
-    .values({ cardId, role, content, ok: ok ?? null, at: new Date().toISOString() })
-    .run();
+  const agora = new Date().toISOString();
+  const inserida = db
+    .insert(messages)
+    .values({ cardId, role, content, ok: ok ?? null, at: agora })
+    .returning({ id: messages.id })
+    .get();
+
+  if (anexos.length > 0) {
+    db.insert(attachments)
+      .values(anexos.map((anexo) => linhaDeAnexo(cardId, anexo, inserida.id)))
+      .run();
+  }
+
   emitChange();
+  return inserida.id;
 }
 
-// Runs e mensagens não têm FK com cascade; a limpeza é explícita.
+function linhaDeAnexo(cardId: string, anexo: AnexoSalvo, messageId: number | null) {
+  return {
+    id: anexo.id,
+    cardId,
+    messageId,
+    name: anexo.nome,
+    size: anexo.tamanho,
+    mime: anexo.tipo,
+    file: anexo.arquivo,
+    at: new Date().toISOString(),
+  };
+}
+
+// Anexo do card: sem mensagem dona, entra em todo disparo daquele card.
+export function addCardAttachments(cardId: string, anexos: AnexoSalvo[]): Attachment[] {
+  if (anexos.length === 0) return [];
+
+  const linhas = anexos.map((anexo) => linhaDeAnexo(cardId, anexo, null));
+  db.insert(attachments).values(linhas).run();
+  emitChange();
+  return linhas.map(montarAnexo);
+}
+
+export function getAttachmentRow(id: string): AttachmentRow | undefined {
+  return db.select().from(attachments).where(eq(attachments.id, id)).get();
+}
+
+// Só anexo do card sai: remover anexo de mensagem reescreveria a conversa, que
+// é registro do que foi enviado.
+export function deleteCardAttachment(id: string): boolean {
+  const anexo = db
+    .select()
+    .from(attachments)
+    .where(and(eq(attachments.id, id), isNull(attachments.messageId)))
+    .get();
+  if (!anexo) return false;
+
+  db.delete(attachments).where(eq(attachments.id, id)).run();
+  removerArquivoDoAnexo(anexo.cardId, anexo.file);
+  emitChange();
+  return true;
+}
+
+// Runs, mensagens e anexos não têm FK com cascade; a limpeza é explícita.
 export function deleteCard(id: string): boolean {
   const existe = db.select().from(cards).where(eq(cards.id, id)).get();
   if (!existe) return false;
   db.delete(runs).where(eq(runs.cardId, id)).run();
   db.delete(messages).where(eq(messages.cardId, id)).run();
+  db.delete(attachments).where(eq(attachments.cardId, id)).run();
   db.delete(cards).where(eq(cards.id, id)).run();
   emitChange();
   return true;
@@ -226,7 +303,7 @@ export function createCard(input: {
   };
   db.insert(cards).values(row).run();
   emitChange();
-  return { ...row, history: [], messages: [] };
+  return { ...row, history: [], messages: [], attachments: [] };
 }
 
 export function updateCard(
