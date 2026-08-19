@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Card, Column, Project } from "@/lib/config";
 import { podeDispararAgente } from "@/lib/disparo";
+import { textoSimplesDeMarkdown } from "@/lib/texto";
 import { useTextoCortado } from "@/lib/ui/use-texto-cortado";
 
 export default function KanbanCard({
@@ -92,7 +93,7 @@ export default function KanbanCard({
           card-parede que o corte existe pra evitar. */}
       {card.description && (
         <p className="text-muted-foreground line-clamp-3 text-xs break-words whitespace-pre-wrap">
-          {card.description}
+          {textoSimplesDeMarkdown(card.description)}
         </p>
       )}
 

@@ -3,8 +3,8 @@
 import { useRef, useState } from "react";
 import AttachmentChip from "@/components/molecules/AttachmentChip";
 import Icon from "@/components/atoms/Icon";
+import RichTextEditor from "@/components/molecules/RichTextEditor";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/ui/utils";
 
 // Três caminhos pro mesmo lugar: o clipe abre o seletor, arrastar solta em cima
@@ -76,9 +76,11 @@ export default function ChatComposer({
         setArrastando(false);
       }}
       onDrop={(evento) => {
-        evento.preventDefault();
         setArrastando(false);
-        if (rodando) return;
+        // soltar em cima do editor já foi tratado lá dentro, e o evento sobe
+        // até aqui mesmo assim: sem a checagem o arquivo entraria duas vezes
+        if (evento.defaultPrevented || rodando) return;
+        evento.preventDefault();
         receber(evento.dataTransfer.files);
       }}
     >
@@ -106,19 +108,30 @@ export default function ChatComposer({
         </p>
       )}
 
-      <div className="flex gap-2">
-        <input
-          ref={seletorDeArquivos}
-          type="file"
-          multiple
-          className="sr-only"
-          tabIndex={-1}
-          onChange={(evento) => {
-            receber(evento.target.files);
-            // limpa pra reanexar o mesmo arquivo depois de removê-lo
-            evento.target.value = "";
-          }}
-        />
+      <input
+        ref={seletorDeArquivos}
+        type="file"
+        multiple
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(evento) => {
+          receber(evento.target.files);
+          // limpa pra reanexar o mesmo arquivo depois de removê-lo
+          evento.target.value = "";
+        }}
+      />
+
+      <RichTextEditor
+        value={value}
+        onChange={onChange}
+        onSubmit={onSubmit}
+        onPasteFiles={(colados) => onAnexar(colados)}
+        placeholder={placeholder}
+        ariaLabel="Mensagem para o agente"
+        desabilitado={rodando}
+      />
+
+      <div className="flex items-center gap-2">
         <Button
           type="button"
           variant="outline"
@@ -129,26 +142,20 @@ export default function ChatComposer({
         >
           <Icon name="anexo" size="lg" />
         </Button>
-        <Input
-          aria-label="Mensagem para o agente"
-          placeholder={placeholder}
-          value={value}
-          onChange={(evento) => onChange(evento.target.value)}
-          onPaste={(evento) => {
-            if (rodando || evento.clipboardData.files.length === 0) return;
-            evento.preventDefault();
-            receber(evento.clipboardData.files);
-          }}
-          disabled={rodando}
-          className="flex-1"
-        />
+        <p className="text-faint text-[11px]">Enter envia · Shift+Enter quebra linha</p>
         {rodando ? (
-          <Button type="button" variant="destructive" disabled={cancelando} onClick={onCancel}>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={cancelando}
+            onClick={onCancel}
+            className="ml-auto"
+          >
             <Icon name="cancelar" size="md" />
             {cancelando ? "cancelando…" : "Cancelar"}
           </Button>
         ) : (
-          <Button type="submit" disabled={!temOQueEnviar}>
+          <Button type="submit" disabled={!temOQueEnviar} className="ml-auto">
             Enviar
           </Button>
         )}

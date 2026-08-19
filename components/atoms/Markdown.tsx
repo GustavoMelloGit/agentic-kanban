@@ -1,7 +1,9 @@
 "use client";
 
 import ReactMarkdown, { type Components } from "react-markdown";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import { cn } from "@/lib/ui/utils";
 
 // O conteúdo vem do agente: links abrem fora da aba do board pra não perder o
 // estado do drawer, e sem referrer porque o destino é imprevisível.
@@ -22,10 +24,28 @@ const componentes: Components = {
   ),
 };
 
-export default function Markdown({ content }: { content: string }) {
+const PLUGINS = [remarkGfm];
+const PLUGINS_COM_QUEBRA_SIMPLES = [remarkGfm, remarkBreaks];
+
+// `quebrasSimples` é pro texto escrito por gente numa caixa de texto, onde o
+// Enter é quebra de verdade: sem ele, a descrição antiga — puro texto com
+// quebras — viraria um parágrafo só ao ser lida como markdown. A saída do
+// agente segue a regra do commonmark, em que a quebra é explícita.
+export default function Markdown({
+  content,
+  quebrasSimples = false,
+  className,
+}: {
+  content: string;
+  quebrasSimples?: boolean;
+  className?: string;
+}) {
   return (
-    <div className="markdown">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={componentes}>
+    <div className={cn("markdown", className)}>
+      <ReactMarkdown
+        remarkPlugins={quebrasSimples ? PLUGINS_COM_QUEBRA_SIMPLES : PLUGINS}
+        components={componentes}
+      >
         {content}
       </ReactMarkdown>
     </div>

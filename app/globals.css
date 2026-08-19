@@ -277,3 +277,56 @@
   .markdown hr { border: 0; border-top: 1px solid var(--border); margin: 12px 0; }
   .markdown img { max-width: 100%; }
 }
+
+/* ============================================================================
+   Caixa de escrita formatada (conversa e descrição do card)
+
+   Também em CSS, e pelo mesmo motivo do bloco acima: quem monta o HTML aqui é o
+   ProseMirror. O `.markdown` já dá a aparência do texto publicado — a caixa
+   herda ele e acrescenta só o que é de escrever, não de ler.
+   ========================================================================= */
+@layer components {
+  /* o anel de foco é do container, via focus-within, pra que a barra de
+     formatação fique dentro do mesmo campo que o texto; um segundo anel aqui
+     desenharia duas bordas concêntricas na mesma caixa */
+  .editor-content:focus,
+  .editor-content:focus-visible {
+    outline: none;
+  }
+  /* o placeholder do tiptap é decoração no nó vazio, não um elemento: o texto
+     vem no data-attribute e float+height:0 tira ele do fluxo pra que o cursor
+     continue na primeira coluna */
+  .editor-content .is-empty::before {
+    content: attr(data-placeholder);
+    color: var(--muted-foreground);
+    float: left;
+    height: 0;
+    pointer-events: none;
+  }
+  /* a checklist daqui tem input de verdade e label; a do preview é a do
+     remark-gfm, estilizada no bloco .markdown e com marcação diferente */
+  .editor-content ul[data-type="taskList"] {
+    padding-left: 0;
+    list-style: none;
+  }
+  .editor-content ul[data-type="taskList"] li {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  /* o input alinha pela primeira linha do item, não pelo centro do bloco:
+     item de duas linhas deixaria a caixa boiando no meio do texto */
+  .editor-content ul[data-type="taskList"] li > label {
+    display: flex;
+    margin-top: 3px;
+  }
+  .editor-content ul[data-type="taskList"] li > div {
+    min-width: 0;
+    flex: 1;
+  }
+  /* o gapcursor aparece quando o cursor para entre dois blocos (depois de um
+     bloco de código no fim do texto, por exemplo) e sem cor ele é invisível */
+  .editor-content .ProseMirror-gapcursor::after {
+    border-top-color: var(--foreground);
+  }
+}
