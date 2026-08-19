@@ -1,7 +1,15 @@
 "use client";
 
-import { Extension, type Editor, type Extensions } from "@tiptap/core";
+import {
+  Extension,
+  markInputRule,
+  markPasteRule,
+  type Editor,
+  type Extensions,
+} from "@tiptap/core";
+import Bold from "@tiptap/extension-bold";
 import HardBreak from "@tiptap/extension-hard-break";
+import Italic from "@tiptap/extension-italic";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { Placeholder } from "@tiptap/extensions";
 import StarterKit from "@tiptap/starter-kit";
@@ -68,6 +76,41 @@ const Checklist = TaskList.extend({
   },
 });
 
+// As regras de negrito e itálico do tiptap aceitam espaço entre o delimitador e
+// o conteúdo, então "2 * 3 * 4" é lido como itálico e o texto guardado sai
+// "2  *3*  4" — o asterisco de multiplicação virou marcação e o requisito chega
+// ao agente diferente do que foi escrito. O commonmark exige o delimitador
+// colado ao conteúdo; estas regras seguem isso, na digitação e na colagem.
+const NEGRITO_ASTERISCO = /(?:^|\s)(\*\*(?![\s*])([^*]*[^\s*])\*\*)/;
+const NEGRITO_UNDERSCORE = /(?:^|\s)(__(?![\s_])([^_]*[^\s_])__)/;
+const ITALICO_ASTERISCO = /(?:^|\s)(\*(?![\s*])([^*]*[^\s*])\*)/;
+const ITALICO_UNDERSCORE = /(?:^|\s)(_(?![\s_])([^_]*[^\s_])_)/;
+
+// digitar fecha a marcação no fim do que já foi escrito; colar varre o texto todo
+const aoDigitar = (padrao: RegExp) => new RegExp(`${padrao.source}$`);
+const aoColar = (padrao: RegExp) => new RegExp(padrao.source, "g");
+
+function comDelimitadorColado(
+  marca: typeof Bold | typeof Italic,
+  padroes: [RegExp, RegExp]
+) {
+  return marca.extend({
+    addInputRules() {
+      return padroes.map((padrao) =>
+        markInputRule({ find: aoDigitar(padrao), type: this.type })
+      );
+    },
+    addPasteRules() {
+      return padroes.map((padrao) =>
+        markPasteRule({ find: aoColar(padrao), type: this.type })
+      );
+    },
+  });
+}
+
+const Negrito = comDelimitadorColado(Bold, [NEGRITO_ASTERISCO, NEGRITO_UNDERSCORE]);
+const Italico = comDelimitadorColado(Italic, [ITALICO_ASTERISCO, ITALICO_UNDERSCORE]);
+
 function AtalhosDoTeclado(obterEnvio: () => (() => void) | undefined) {
   return Extension.create({
     name: "atalhosDoEditor",
@@ -116,11 +159,15 @@ export function extensoesDoEditor({
       // <u> no meio do texto que o agente lê
       underline: false,
       hardBreak: false,
+      bold: false,
+      italic: false,
       heading: { levels: [1, 2, 3] },
       // autolink transformaria toda URL digitada em [url](url) no texto salvo;
       // link explícito é decisão de quem escreve, não do editor
       link: { openOnClick: false, autolink: false, linkOnPaste: true },
     }),
+    Negrito,
+    Italico,
     QuebraDeLinha,
     Checklist,
     TaskItem.configure({ nested: true }),
